@@ -240,6 +240,35 @@ class MidiPorts:
         
         return port_string
 
+    def _resolve_port_name(self, saved_name, available_names):
+        """Resolve a saved port name against the currently available port
+        names. Saved names can go stale because the trailing ALSA
+        client:port ID (e.g. "20:0") is reassigned whenever the device is
+        unplugged/replugged or other devices connect in a different order.
+        Matches by descriptive name first (full name minus that volatile
+        ID), then by device name prefix, mirroring find_and_set_input()/
+        find_and_set_output(). Returns the saved name unchanged if nothing
+        matches, so the caller's normal "port not found" handling applies."""
+        if not saved_name or saved_name == "default":
+            return saved_name
+
+        if saved_name in available_names:
+            return saved_name
+
+        descriptive = self._extract_descriptive_port_name(saved_name)
+        if descriptive:
+            for name in available_names:
+                if self._extract_descriptive_port_name(name) == descriptive:
+                    return name
+
+        device = self._extract_device_name(saved_name)
+        if device:
+            for name in available_names:
+                if device in name:
+                    return name
+
+        return saved_name
+
     def connectall(self):
         """Reconnect mido ports and then manage aconnect connections."""
         # Reconnect the input and playports on a connectall
@@ -280,15 +309,19 @@ class MidiPorts:
         cycling and restarts pick up where they left off. Returns True/False."""
         name = setup.get("name") or "Setup"
         try:
-            input_port = setup.get("input_port")
+            _refresh_port_cache()
+            current_inputs = _get_cached_input_names()
+            current_outputs = _get_cached_output_names()
+
+            input_port = self._resolve_port_name(setup.get("input_port"), current_inputs)
             if input_port and input_port != "default":
                 self.change_port("inport", input_port, notify=False)
 
-            play_port = setup.get("play_port")
+            play_port = self._resolve_port_name(setup.get("play_port"), current_outputs)
             if play_port and play_port != "default":
                 self.change_port("playport", play_port, notify=False)
 
-            secondary_input_port = setup.get("secondary_input_port")
+            secondary_input_port = self._resolve_port_name(setup.get("secondary_input_port"), current_inputs)
             if secondary_input_port:
                 self.usersettings.change_setting_value("secondary_input_port", secondary_input_port)
 

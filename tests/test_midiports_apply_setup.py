@@ -94,6 +94,45 @@ class TestMidiPortsApplySetup(unittest.TestCase):
 
         self.mock_connectall.assert_not_called()
 
+    def test_apply_setup_resolves_stale_client_port_id(self):
+        # Setup was saved when the Roland's ALSA client:port ID was "20:0";
+        # since then the device was replugged and now enumerates as "24:0".
+        stale_input = "Roland Digital Piano:Roland Digital Piano MIDI 1 20:0"
+        current_input = "Roland Digital Piano:Roland Digital Piano MIDI 1 24:0"
+        stale_output = "Lenovo Tab:Lenovo Tab MIDI 1 18:0"
+        current_output = "Lenovo Tab:Lenovo Tab MIDI 1 30:0"
+
+        midiports_module.mido.get_input_names.return_value = [current_input]
+        midiports_module.mido.get_output_names.return_value = [current_output]
+
+        setup = {"id": 5, "name": "Synthesia", "input_port": stale_input,
+                 "secondary_input_port": "default", "play_port": stale_output, "auto_connect": False}
+
+        result = self.midiports.apply_setup(setup)
+
+        self.assertTrue(result)
+        self.mock_open_input.assert_called_with(current_input, callback=self.midiports.msg_callback)
+        self.mock_open_output.assert_called_with(current_output)
+        self.assertEqual(self.usersettings.get_setting_value("input_port"), current_input)
+        self.assertEqual(self.usersettings.get_setting_value("play_port"), current_output)
+
+    def test_apply_setup_keeps_stale_name_when_device_absent(self):
+        # Device genuinely not connected: no available port matches by name,
+        # so the saved name passes through unchanged and the normal
+        # open-failure path in change_port handles it (no crash).
+        midiports_module.mido.get_input_names.return_value = ["Some Other Device:Some Other Device MIDI 1 12:0"]
+        midiports_module.mido.open_input.side_effect = Exception("port not found")
+
+        setup = {"id": 6, "name": "Synthesia", "input_port": "Roland Digital Piano:Roland Digital Piano MIDI 1 20:0",
+                 "secondary_input_port": "default", "play_port": "default", "auto_connect": False}
+
+        result = self.midiports.apply_setup(setup)
+
+        # apply_setup itself doesn't raise (change_port swallows the mido error internally)
+        self.assertTrue(result)
+        self.mock_open_input.assert_called_with(
+            "Roland Digital Piano:Roland Digital Piano MIDI 1 20:0", callback=self.midiports.msg_callback)
+
     def test_cycle_port_setup_returns_none_with_zero_setups(self):
         self.assertIsNone(self.midiports.cycle_port_setup(self.psm))
 
