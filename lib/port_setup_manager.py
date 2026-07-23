@@ -1,3 +1,4 @@
+import contextlib
 import sqlite3
 import threading
 import os
@@ -44,8 +45,13 @@ class PortSetupManager:
         self._lock = threading.Lock()
         self._init_db()
 
+    @contextlib.contextmanager
     def _connect(self):
-        return sqlite3.connect(self.db_path)
+        conn = sqlite3.connect(self.db_path)
+        try:
+            yield conn
+        finally:
+            conn.close()
 
     def _init_db(self):
         with self._connect() as conn:
