@@ -250,7 +250,7 @@ class MidiPorts:
     def add_instance(self, menu):
         self.menu = menu
 
-    def change_port(self, port, portname):
+    def change_port(self, port, portname, notify=True):
         try:
             destroy_old = None
             if port == "inport":
@@ -261,13 +261,75 @@ class MidiPorts:
                 destroy_old = self.playport
                 self.playport = mido.open_output(portname)
                 self.usersettings.change_setting_value("play_port", portname)
-            self.menu.render_message("Changing " + port + " to:", portname, 1500)
+            if notify:
+                self.menu.render_message("Changing " + port + " to:", portname, 1500)
             if destroy_old is not None:
                 destroy_old.close()
-            self.menu.show()
+            if notify:
+                self.menu.show()
         except Exception:
-            self.menu.render_message("Can't change " + port + " to:", portname, 1500)
-            self.menu.show()
+            if notify:
+                self.menu.render_message("Can't change " + port + " to:", portname, 1500)
+                self.menu.show()
+
+    def apply_setup(self, setup):
+        """Apply a saved port setup dict ({id, name, input_port,
+        secondary_input_port, play_port, auto_connect}): opens the input/playback
+        ports, records the secondary input, optionally re-links input+secondary
+        two-way over ALSA, and remembers this as the active setup so button
+        cycling and restarts pick up where they left off. Returns True/False."""
+        name = setup.get("name") or "Setup"
+        try:
+            input_port = setup.get("input_port")
+            if input_port and input_port != "default":
+                self.change_port("inport", input_port, notify=False)
+
+            play_port = setup.get("play_port")
+            if play_port and play_port != "default":
+                self.change_port("playport", play_port, notify=False)
+
+            secondary_input_port = setup.get("secondary_input_port")
+            if secondary_input_port:
+                self.usersettings.change_setting_value("secondary_input_port", secondary_input_port)
+
+            if setup.get("auto_connect"):
+                connectall.connectall(self.usersettings)
+
+            if setup.get("id") is not None:
+                self.usersettings.change_setting_value("active_port_setup_id", setup["id"])
+
+            if self.menu:
+                self.menu.render_message("Applied setup:", name, 1500)
+                self.menu.show()
+            return True
+        except Exception as e:
+            logger.warning(f"Failed applying port setup '{name}': {e}")
+            if self.menu:
+                self.menu.render_message("Can't apply setup:", name, 1500)
+                self.menu.show()
+            return False
+
+    def cycle_port_setup(self, port_setup_manager):
+        """Cycle to the next saved port setup in ascending priority order
+        (wrapping around) and apply it. Returns the applied setup dict, or None
+        if zero setups are saved (caller should fall back to legacy behavior)."""
+        if port_setup_manager is None:
+            return None
+
+        setups = port_setup_manager.list_setups()
+        if not setups:
+            return None
+
+        raw_id = self.usersettings.get_setting_value("active_port_setup_id")
+        try:
+            current_id = int(raw_id)
+        except (TypeError, ValueError):
+            current_id = None
+
+        from lib.port_setup_manager import get_next_setup
+        next_setup = get_next_setup(setups, current_id)
+        self.apply_setup(next_setup)
+        return next_setup
 
     def reconnect_ports(self):
         """Reconnect input and output ports, with fallback to finding available ports."""

@@ -517,6 +517,9 @@ function initialize_ports_settings() {
     if (typeof initialize_port_connection_manager === 'function') {
         initialize_port_connection_manager();
     }
+    if (typeof load_port_setups === 'function') {
+        load_port_setups();
+    }
     document.getElementById('switch_ports').onclick = function () {
         document.getElementById('switch_ports').disabled = true;
         document.getElementById('switch_ports_sidebar').disabled = true;

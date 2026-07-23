@@ -6,7 +6,8 @@ from lib.functions import fastColorWipe
 
 
 class GPIOHandler:
-    def __init__(self, args, midiports, menu, ledstrip, ledsettings, usersettings, state_manager=None):
+    def __init__(self, args, midiports, menu, ledstrip, ledsettings, usersettings, state_manager=None,
+                 port_setup_manager=None):
         self.args = args
         self.midiports = midiports
         self.menu = menu
@@ -14,6 +15,7 @@ class GPIOHandler:
         self.ledsettings = ledsettings
         self.usersettings = usersettings
         self.state_manager = state_manager
+        self.port_setup_manager = port_setup_manager
         self.setup_gpio()
 
     def setup_gpio(self):
@@ -88,11 +90,14 @@ class GPIOHandler:
             if self.ledsettings.sequence_active:
                 self.ledsettings.set_sequence(0, 1)
             else:
-                active_input = self.usersettings.get_setting_value("input_port")
-                secondary_input = self.usersettings.get_setting_value("secondary_input_port")
-                self.midiports.change_port("inport", secondary_input)
-                self.usersettings.change_setting_value("secondary_input_port", active_input)
-                self.usersettings.change_setting_value("input_port", secondary_input)
+                applied = self.midiports.cycle_port_setup(self.port_setup_manager)
+                if applied is None:
+                    # No saved setups yet: keep the legacy 2-way input/secondary swap
+                    active_input = self.usersettings.get_setting_value("input_port")
+                    secondary_input = self.usersettings.get_setting_value("secondary_input_port")
+                    self.midiports.change_port("inport", secondary_input)
+                    self.usersettings.change_setting_value("secondary_input_port", active_input)
+                    self.usersettings.change_setting_value("input_port", secondary_input)
                 fastColorWipe(self.ledstrip.strip, True, self.ledsettings)
             while GPIO.input(self.KEY3) == 0:
                 time.sleep(0.01)

@@ -1863,7 +1863,8 @@ function get_ports() {
     xhttp.onreadystatechange = function () {
         if (this.readyState === 4 && this.status === 200) {
             let response = JSON.parse(this.responseText);
-            
+            window.lastPortsResponse = response;
+
             // Update old dropdowns if they exist
             if (document.getElementById('active_input') != null) {
                 const active_input_select = document.getElementById('active_input');

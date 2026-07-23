@@ -11,6 +11,7 @@ from lib.log_setup import logger
 from lib.menulcd import MenuLCD
 from lib.midiports import MidiPorts
 from lib.platform import PlatformRasp, PlatformNull, Hotspot
+from lib.port_setup_manager import PortSetupManager
 from lib.savemidi import SaveMIDI
 from lib.usersettings import UserSettings
 
@@ -31,7 +32,10 @@ class ComponentInitializer:
             self.platform = platform_future.result()
             self.usersettings = usersettings_future.result()
             self.saving = saving_future.result()
-        
+
+        # Port setups store (no dependencies, cheap SQLite init)
+        self.port_setup_manager = PortSetupManager()
+
         # Phase 2: Initialize components that depend on UserSettings in parallel
         with ThreadPoolExecutor(max_workers=2) as executor:
             midiports_future = executor.submit(MidiPorts, self.usersettings)

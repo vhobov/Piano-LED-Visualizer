@@ -270,3 +270,12 @@ try:
 except Exception as e:
     # Silent-ish failure keeps app running
     logger.warning(f"ProfileManager init failed: {e}")
+
+# Attach port setup manager without modifying existing AppState.__init__
+try:
+    from lib.port_setup_manager import PortSetupManager
+    if not hasattr(app_state, 'port_setup_manager'):
+        app_state.port_setup_manager = PortSetupManager()
+except Exception as e:
+    # Silent-ish failure keeps app running
+    logger.warning(f"PortSetupManager init failed: {e}")

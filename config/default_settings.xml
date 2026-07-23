@@ -116,6 +116,7 @@
 	<input_port>default</input_port>
 	<secondary_input_port>default</secondary_input_port>
 	<play_port>default</play_port>
+	<active_port_setup_id></active_port_setup_id>
 
 	<!-- Learn MIDI -->
 	<sort_by>dateDesc</sort_by>

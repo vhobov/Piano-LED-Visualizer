@@ -126,6 +126,29 @@ def connectall(usersettings=None):
             print(f"ERROR: Secondary input port '{secondary_input_port}' not found")
 
 
+def is_connected(usersettings) -> bool:
+    """Check whether the currently configured input_port and secondary_input_port
+    are presently two-way connected over ALSA. Used by the web UI to prefill the
+    'auto-connect' checkbox when saving the current port selection as a setup."""
+    input_port = usersettings.get_setting_value("input_port")
+    secondary_input_port = usersettings.get_setting_value("secondary_input_port")
+
+    if not input_port or not secondary_input_port:
+        return False
+    if input_port == "default" or secondary_input_port == "default":
+        return False
+    if input_port == secondary_input_port:
+        return False
+
+    try:
+        input_port_id = input_port.split()[-1]
+        secondary_input_port_id = secondary_input_port.split()[-1]
+        aconnect_output = subprocess.check_output(["aconnect", "-l"], text=True)
+        return _check_connection_exists(aconnect_output, input_port_id, secondary_input_port_id)
+    except Exception:
+        return False
+
+
 def _check_connection_exists(aconnect_output, input_port_id, secondary_input_port_id):
     """Check if the desired two-way connection already exists"""
     try:

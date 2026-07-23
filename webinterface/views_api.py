@@ -24,6 +24,7 @@ import re
 from lib.rpi_drivers import GPIO
 from lib.log_setup import logger
 from flask import abort
+from lib import connectall
 
 SENSECOVER = 12
 GPIO.setmode(GPIO.BCM)
@@ -2125,7 +2126,8 @@ def get_ports():
                 "secondary_input_port": app_state.usersettings.get_setting_value("secondary_input_port"),
                 "play_port": app_state.usersettings.get_setting_value("play_port"),
                 "connected_ports": str(subprocess.check_output(["aconnect", "-i", "-l"])),
-                "midi_logging": app_state.usersettings.get_setting_value("midi_logging")}
+                "midi_logging": app_state.usersettings.get_setting_value("midi_logging"),
+                "currently_connected": connectall.is_connected(app_state.usersettings)}
 
     return jsonify(response)
 
@@ -2314,6 +2316,93 @@ def api_update_highscore():
         return jsonify(success=False, error="Invalid payload"), 400
     changed = app_state.profile_manager.update_highscore(profile_id, song_name, new_score)
     return jsonify(success=True, updated=changed)
+
+# ---------------------- Port Setups API ----------------------
+
+def _port_setup_payload(data):
+    return {
+        "name": data.get('name'),
+        "priority": data.get('priority'),
+        "input_port": data.get('input_port'),
+        "secondary_input_port": data.get('secondary_input_port', 'default'),
+        "play_port": data.get('play_port'),
+        "auto_connect": bool(data.get('auto_connect', False)),
+    }
+
+@webinterface.route('/api/get_port_setups', methods=['GET'])
+def api_get_port_setups():
+    if not hasattr(app_state, 'port_setup_manager'):
+        return jsonify({"setups": [], "active_setup_id": None})
+    setups = app_state.port_setup_manager.list_setups()
+    try:
+        active_setup_id = int(app_state.usersettings.get_setting_value("active_port_setup_id"))
+    except (TypeError, ValueError):
+        active_setup_id = None
+    return jsonify({"setups": setups, "active_setup_id": active_setup_id})
+
+@webinterface.route('/api/create_port_setup', methods=['POST'])
+def api_create_port_setup():
+    if not hasattr(app_state, 'port_setup_manager'):
+        abort(500, description="Port setup manager not initialized")
+    data = request.get_json(silent=True) or {}
+    try:
+        setup = app_state.port_setup_manager.create_setup(**_port_setup_payload(data))
+    except ValueError as ve:
+        return jsonify(success=False, error=str(ve)), 400
+    except Exception as e:
+        logger.warning(f"Failed creating port setup: {e}")
+        return jsonify(success=False, error="Internal error"), 500
+    return jsonify(success=True, setup=setup)
+
+@webinterface.route('/api/update_port_setup', methods=['POST'])
+def api_update_port_setup():
+    if not hasattr(app_state, 'port_setup_manager'):
+        abort(500, description="Port setup manager not initialized")
+    data = request.get_json(silent=True) or {}
+    try:
+        setup_id = int(data.get('id'))
+    except (TypeError, ValueError):
+        return jsonify(success=False, error="id must be integer"), 400
+    try:
+        setup = app_state.port_setup_manager.update_setup(setup_id, **_port_setup_payload(data))
+    except ValueError as ve:
+        return jsonify(success=False, error=str(ve)), 400
+    except Exception as e:
+        logger.warning(f"Failed updating port setup {setup_id}: {e}")
+        return jsonify(success=False, error="Internal error"), 500
+    return jsonify(success=True, setup=setup)
+
+@webinterface.route('/api/delete_port_setup', methods=['POST'])
+def api_delete_port_setup():
+    if not hasattr(app_state, 'port_setup_manager'):
+        abort(500, description="Port setup manager not initialized")
+    data = request.get_json(silent=True) or {}
+    try:
+        setup_id = int(data.get('id'))
+    except (TypeError, ValueError):
+        return jsonify(success=False, error="id must be integer"), 400
+    deleted = app_state.port_setup_manager.delete_setup(setup_id)
+    try:
+        if int(app_state.usersettings.get_setting_value("active_port_setup_id")) == setup_id:
+            app_state.usersettings.change_setting_value("active_port_setup_id", "")
+    except (TypeError, ValueError):
+        pass
+    return jsonify(success=True, deleted=deleted)
+
+@webinterface.route('/api/apply_port_setup', methods=['POST'])
+def api_apply_port_setup():
+    if not hasattr(app_state, 'port_setup_manager'):
+        abort(500, description="Port setup manager not initialized")
+    data = request.get_json(silent=True) or {}
+    try:
+        setup_id = int(data.get('id'))
+    except (TypeError, ValueError):
+        return jsonify(success=False, error="id must be integer"), 400
+    setup = app_state.port_setup_manager.get_setup(setup_id)
+    if setup is None:
+        return jsonify(success=False, error="Setup not found"), 404
+    success = app_state.midiports.apply_setup(setup)
+    return jsonify(success=success, reload_ports=True)
 
 # ========== Port Manager Helper Functions ==========
 

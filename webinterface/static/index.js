@@ -661,6 +661,223 @@ function delete_port_connection(source, destination) {
         });
 }
 
+// ========== Saved Port Setups ==========
+
+let portSetupsState = {
+    setups: [],
+    activeSetupId: null
+};
+
+function load_port_setups() {
+    fetch('/api/get_port_setups')
+        .then(response => response.json())
+        .then(data => {
+            portSetupsState.setups = data.setups || [];
+            portSetupsState.activeSetupId = data.active_setup_id;
+            render_port_setups();
+        })
+        .catch(error => {
+            console.error('Error loading port setups:', error);
+        });
+}
+
+function escape_html(str) {
+    const div = document.createElement('div');
+    div.textContent = str == null ? '' : str;
+    return div.innerHTML;
+}
+
+function render_port_setups() {
+    const list = document.getElementById('port-setups-list');
+    if (!list) return;
+
+    list.innerHTML = '';
+
+    if (portSetupsState.setups.length === 0) {
+        const empty = document.createElement('div');
+        empty.className = 'text-xs sm:text-sm text-gray-500 dark:text-gray-400';
+        empty.textContent = translate('no_port_setups');
+        list.appendChild(empty);
+        return;
+    }
+
+    portSetupsState.setups.forEach(setup => {
+        const row = document.createElement('div');
+        row.className = 'glass-light rounded-glass p-3 flex flex-wrap items-center gap-3';
+
+        const isActive = portSetupsState.activeSetupId === setup.id;
+        const activeBadge = isActive
+            ? `<span class="text-xs font-bold text-green-500 mr-2">${translate('active_setup_badge')}</span>`
+            : '';
+
+        const info = document.createElement('div');
+        info.className = 'flex-1 min-w-[200px]';
+        info.innerHTML = `
+            ${activeBadge}<span class="font-semibold text-sm">${escape_html(setup.name)}</span>
+            <span class="text-xs text-gray-500 dark:text-gray-400 ml-2">#${setup.priority}</span>
+            <div class="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                ${escape_html(setup.input_port)} / ${escape_html(setup.secondary_input_port)} / ${escape_html(setup.play_port)}
+                ${setup.auto_connect ? ' &middot; 🔗' : ''}
+            </div>
+        `;
+
+        const actions = document.createElement('div');
+        actions.className = 'flex gap-2';
+        actions.innerHTML = `
+            <button onclick="apply_port_setup(${setup.id})" class="h-8 px-3 outline-none glass-light hover:glass font-bold rounded-glass transition-smooth-fast text-xs">${translate('apply')}</button>
+            <button onclick="open_port_setup_form(${setup.id})" class="h-8 px-3 outline-none glass-light hover:glass font-bold rounded-glass transition-smooth-fast text-xs">${translate('edit')}</button>
+            <button onclick="delete_port_setup(${setup.id})" class="h-8 px-3 outline-none glass-light hover:glass font-bold rounded-glass transition-smooth-fast text-xs text-red-400">${translate('delete')}</button>
+        `;
+
+        row.appendChild(info);
+        row.appendChild(actions);
+        list.appendChild(row);
+    });
+}
+
+function populate_port_setup_form_selects(selected) {
+    selected = selected || {};
+    const sourceSelects = {
+        port_setup_form_input: document.getElementById('active_input'),
+        port_setup_form_secondary: document.getElementById('secondary_input'),
+        port_setup_form_playback: document.getElementById('playback_input')
+    };
+
+    Object.keys(sourceSelects).forEach(targetId => {
+        const target = document.getElementById(targetId);
+        const source = sourceSelects[targetId];
+        if (!target || !source) return;
+        target.innerHTML = '';
+        Array.from(source.options).forEach(opt => {
+            const clone = document.createElement('option');
+            clone.value = opt.value;
+            clone.textContent = opt.textContent;
+            target.appendChild(clone);
+        });
+    });
+
+    if (selected.input_port && document.getElementById('port_setup_form_input')) {
+        document.getElementById('port_setup_form_input').value = selected.input_port;
+    }
+    if (selected.secondary_input_port && document.getElementById('port_setup_form_secondary')) {
+        document.getElementById('port_setup_form_secondary').value = selected.secondary_input_port;
+    }
+    if (selected.play_port && document.getElementById('port_setup_form_playback')) {
+        document.getElementById('port_setup_form_playback').value = selected.play_port;
+    }
+}
+
+function open_port_setup_form(setupId) {
+    const form = document.getElementById('port-setup-form');
+    if (!form) return;
+
+    if (setupId === null || setupId === undefined) {
+        // "Save current as new setup": prefill from the live dropdowns above
+        document.getElementById('port_setup_form_id').value = '';
+        document.getElementById('port_setup_form_name').value = '';
+        const nextPriority = portSetupsState.setups.length > 0
+            ? Math.max(...portSetupsState.setups.map(s => s.priority)) + 1
+            : 1;
+        document.getElementById('port_setup_form_priority').value = nextPriority;
+        document.getElementById('port_setup_form_auto_connect').checked =
+            !!(window.lastPortsResponse && window.lastPortsResponse.currently_connected);
+
+        const activeInput = document.getElementById('active_input');
+        const secondaryInput = document.getElementById('secondary_input');
+        const playbackInput = document.getElementById('playback_input');
+        populate_port_setup_form_selects({
+            input_port: activeInput ? activeInput.value : '',
+            secondary_input_port: secondaryInput ? secondaryInput.value : '',
+            play_port: playbackInput ? playbackInput.value : ''
+        });
+    } else {
+        const setup = portSetupsState.setups.find(s => s.id === setupId);
+        if (!setup) return;
+        document.getElementById('port_setup_form_id').value = setup.id;
+        document.getElementById('port_setup_form_name').value = setup.name;
+        document.getElementById('port_setup_form_priority').value = setup.priority;
+        document.getElementById('port_setup_form_auto_connect').checked = !!setup.auto_connect;
+        populate_port_setup_form_selects(setup);
+    }
+
+    form.classList.remove('hidden');
+    form.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function close_port_setup_form() {
+    const form = document.getElementById('port-setup-form');
+    if (form) form.classList.add('hidden');
+}
+
+function submit_port_setup_form() {
+    const idValue = document.getElementById('port_setup_form_id').value;
+    const payload = {
+        name: document.getElementById('port_setup_form_name').value.trim(),
+        priority: parseInt(document.getElementById('port_setup_form_priority').value, 10),
+        input_port: document.getElementById('port_setup_form_input').value,
+        secondary_input_port: document.getElementById('port_setup_form_secondary').value,
+        play_port: document.getElementById('port_setup_form_playback').value,
+        auto_connect: document.getElementById('port_setup_form_auto_connect').checked
+    };
+
+    const isEdit = idValue !== '';
+    if (isEdit) payload.id = parseInt(idValue, 10);
+
+    fetch(isEdit ? '/api/update_port_setup' : '/api/create_port_setup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                close_port_setup_form();
+                load_port_setups();
+            } else {
+                alert(data.error || translate('port_setup_save_failed'));
+            }
+        })
+        .catch(error => {
+            console.error('Error saving port setup:', error);
+            alert(translate('port_setup_save_failed'));
+        });
+}
+
+function apply_port_setup(id) {
+    fetch('/api/apply_port_setup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id })
+    })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                refresh_all_ports();
+                load_port_setups();
+            } else {
+                alert(data.error || translate('port_setup_apply_failed'));
+            }
+        })
+        .catch(error => {
+            console.error('Error applying port setup:', error);
+        });
+}
+
+function delete_port_setup(id) {
+    fetch('/api/delete_port_setup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id })
+    })
+        .then(response => response.json())
+        .then(() => {
+            load_port_setups();
+        })
+        .catch(error => {
+            console.error('Error deleting port setup:', error);
+        });
+}
+
 function update_port_selection_ui() {
     // Remove previous selection highlights
     document.querySelectorAll('.port-item').forEach(el => {

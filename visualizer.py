@@ -59,7 +59,8 @@ class VisualizerApp:
         
         self.gpio_handler = GPIOHandler(self.args, self.ci.midiports, self.ci.menu,
                                         self.ci.ledstrip, self.ci.ledsettings,
-                                        self.ci.usersettings, self.state_manager)
+                                        self.ci.usersettings, self.state_manager,
+                                        self.ci.port_setup_manager)
         self.web_interface_manager = WebInterfaceManager(self.args, self.ci.usersettings,
                                                          self.ci.ledsettings,
                                                          self.ci.ledstrip,
