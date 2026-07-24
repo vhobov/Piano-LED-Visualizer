@@ -110,6 +110,7 @@ class ComponentInitializer:
 
         self.midiports.add_instance(self.menu)
         self.midiports.port_setup_manager = self.port_setup_manager
+        self._apply_startup_port_setup()
         self.ledsettings.add_instance(self.menu, self.ledstrip)
         self.saving.add_instance(self.menu)
         self.learning.add_instance(self.menu)
@@ -122,3 +123,24 @@ class ComponentInitializer:
         self.midiports.start_midi_monitor()
 
         fastColorWipe(self.ledstrip.strip, True, self.ledsettings)
+
+    def _apply_startup_port_setup(self):
+        """Apply whichever Setup was last active (or the first by priority if
+        that one's since been deleted, or was never set) so Setups - including
+        their extra_connections wiring - come back after a reboot, instead of
+        only being restored the next time one is explicitly applied or the
+        physical button cycles to it."""
+        setups = self.port_setup_manager.list_setups()
+        if not setups:
+            return
+
+        setup = None
+        try:
+            active_id = int(self.usersettings.get_setting_value("active_port_setup_id"))
+            setup = self.port_setup_manager.get_setup(active_id)
+        except (TypeError, ValueError):
+            pass
+        if setup is None:
+            setup = setups[0]
+
+        self.midiports.apply_setup(setup)
