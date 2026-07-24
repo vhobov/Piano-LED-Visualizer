@@ -53,7 +53,12 @@ class LedSettings:
         self.multicolor_index = 0
         self.multicolor_iteration = ast.literal_eval(us.get_setting_value("multicolor_iteration"))
 
-        self.sequence_active = us.get_setting_value("sequence_active")
+        # get_setting_value() always returns a string (XML text), and any non-empty
+        # string (including "False") is truthy in Python - coerce to a real bool so
+        # KEY3's `if self.ledsettings.sequence_active:` check (gpio_handler.py) isn't
+        # permanently stuck true after every restart for users who never touch the
+        # LED Sequences feature.
+        self.sequence_active = us.get_setting_value("sequence_active") == "True"
 
         self.backlight_brightness = int(us.get_setting_value("backlight_brightness"))
         self.backlight_brightness_percent = int(us.get_setting_value("backlight_brightness_percent"))
