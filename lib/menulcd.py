@@ -51,7 +51,7 @@ class UITheme:
 
 
 class MenuLCD:
-    def __init__(self, xml_file_name, args, usersettings, ledsettings, ledstrip, learning, saving, midiports, hotspot, platform):
+    def __init__(self, xml_file_name, args, usersettings, ledsettings, ledstrip, learning, saving, midiports, hotspot, platform, port_setup_manager=None):
         self.list_count = None
         self.parent_menu = None
         self.current_choice = None
@@ -65,6 +65,10 @@ class MenuLCD:
         self.midiports = midiports
         self.hotspot = hotspot
         self.platform = platform
+        self.port_setup_manager = port_setup_manager
+        self._port_setups_menu_cache = {}
+        self._cached_active_setup_id = None
+        self._cached_active_setup_name = None
         self.args = args
         self._font_cache = {}
         self._title_image_cache = {}
@@ -113,6 +117,7 @@ class MenuLCD:
 
         self.update_songs()
         self.update_ports()
+        self.update_port_setups()
         self.update_led_note_offsets()
         self.speed_multiplier = 1
 
@@ -403,6 +408,62 @@ class MenuLCD:
                 element.setAttribute("text", port)
                 mc = self.DOMTree.getElementsByTagName("Ports_Settings")[index]
                 mc.appendChild(element)
+
+    def _get_active_setup_id(self):
+        """Currently applied Setup id (from usersettings), or None."""
+        raw_id = self.usersettings.get_setting_value("active_port_setup_id")
+        try:
+            return int(raw_id)
+        except (TypeError, ValueError):
+            return None
+
+    def _get_active_setup_name(self):
+        """Name of the currently applied Setup, or None. Cached so this can be
+        called on every screen redraw (up to 10Hz while idle) without hitting
+        SQLite each time - only re-queries when the active id actually changes."""
+        if not self.port_setup_manager:
+            return None
+        active_id = self._get_active_setup_id()
+        if active_id != self._cached_active_setup_id:
+            setup = self.port_setup_manager.get_setup(active_id) if active_id is not None else None
+            self._cached_active_setup_id = active_id
+            self._cached_active_setup_name = setup["name"] if setup else None
+        return self._cached_active_setup_name
+
+    def update_port_setups(self):
+        """Rebuild the on-device 'Port Setups' menu from PortSetupManager,
+        mirroring update_sequence_list()'s replace-then-populate recipe (the
+        'Port Setups' menu entry is itself a top-level menu, tagged "menu"
+        like its siblings; its children are tagged "Port_Setups" - the
+        underscored form of its own declared text). Also builds a
+        display-text -> setup dict cache for change_settings() to apply the
+        chosen setup without a fragile by-name DB re-lookup (setup names
+        aren't guaranteed unique - only priority is)."""
+        element = self.DOMTree.createElement("menu")
+        element.appendChild(self.DOMTree.createTextNode(""))
+        element.setAttribute("text", "Port Setups")
+        mc = self.DOMTree.getElementsByTagName("Port_Setups")[0]
+        mc.parentNode.parentNode.replaceChild(element, mc.parentNode)
+
+        self._port_setups_menu_cache = {}
+        setups = self.port_setup_manager.list_setups() if self.port_setup_manager else []
+
+        if not setups:
+            leaf = self.DOMTree.createElement("Port_Setups")
+            leaf.appendChild(self.DOMTree.createTextNode(""))
+            leaf.setAttribute("text", "No setups saved")
+            element.appendChild(leaf)
+            return
+
+        active_id = self._get_active_setup_id()
+        for setup in setups:
+            marker = "*" if setup["id"] == active_id else " "
+            label = f"{marker} {setup['name']} #{setup['priority']}"
+            leaf = self.DOMTree.createElement("Port_Setups")
+            leaf.appendChild(self.DOMTree.createTextNode(""))
+            leaf.setAttribute("text", label)
+            element.appendChild(leaf)
+            self._port_setups_menu_cache[label] = setup
 
     def update_led_note_offsets(self):
         note_offsets = self.ledsettings.note_offsets
@@ -919,6 +980,11 @@ class MenuLCD:
         content_start_y = scale(theme.title_height + theme.title_padding * 2)
         viewport_height_orig = lcd_height - content_start_y
         max_visible_items = 4
+        if position == "menu" and self._get_active_setup_name():
+            # Reserve one row for the persistent "Setup: ..." status line
+            # drawn by _draw_special_displays() below, so it never overlaps
+            # the scrollable item list.
+            max_visible_items = 3
         # Set item dimensions
         item_height = scale(theme.item_padding_v * 2) + self.font.size
         total_item_height = item_height + scale(theme.item_gap)
@@ -1162,6 +1228,14 @@ class MenuLCD:
         preview_right = lcd_width - scale(20)
         preview_box = (preview_left, preview_y, preview_right, preview_bottom)
 
+        # Persistent active-setup line on the home/idle screen
+        if self.current_location == "menu":
+            name = self._get_active_setup_name()
+            if name:
+                if len(name) > 20:
+                    name = name[:19] + "…"
+                self.draw.text((scale(5), preview_y), f"Setup: {name}", fill=self.text_color, font=self.font)
+
         # RGB color preview
         if self.current_location == "RGB":
             color_str = self.ledsettings.get_colors()
@@ -1282,6 +1356,8 @@ class MenuLCD:
             self.pointer_position = 0
             self.scroll_offset = 0
             self.cut_count = -6
+            if self.current_choice == "Port Setups":
+                self.update_port_setups()
             self.show(self.current_choice)
 
     def go_back(self):
@@ -1547,6 +1623,11 @@ class MenuLCD:
             self.midiports.change_port("inport", choice)
         if location == "Playback":
             self.midiports.change_port("playport", choice)
+
+        if location == "Port_Setups":
+            setup = self._port_setups_menu_cache.get(choice)
+            if setup:
+                self.midiports.apply_setup(setup)
 
         if location == "Ports_Settings":
             if choice == "Refresh ports" or choice == "Input" or choice == "Playback":

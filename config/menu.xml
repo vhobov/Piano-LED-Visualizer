@@ -240,6 +240,9 @@
             <Restart_RTPMidi_service text="Cancel"></Restart_RTPMidi_service>
         </Ports_Settings>
     </menu>
+    <menu text="Port Setups">
+        <Port_Setups text="No setups saved"></Port_Setups>
+    </menu>
     <menu text="LED animations">
         <LED_animations text="Theater Chase"></LED_animations>
         <LED_animations text="Breathing"></LED_animations>

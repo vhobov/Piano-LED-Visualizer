@@ -57,7 +57,7 @@ class ComponentInitializer:
         # Phase 6: Initialize MenuLCD (depends on everything)
         self.menu = MenuLCD("config/menu.xml", self.args, self.usersettings, self.ledsettings,
                             self.ledstrip, self.learning, self.saving, self.midiports,
-                            self.hotspot, self.platform)
+                            self.hotspot, self.platform, self.port_setup_manager)
         self.setup_components()
 
     def setup_components(self):

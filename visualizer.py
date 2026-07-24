@@ -260,7 +260,8 @@ class VisualizerApp:
                               ci.saving,
                               ci.midiports,
                               ci.hotspot,
-                              ci.platform)
+                              ci.platform,
+                              ci.port_setup_manager)
             ci.menu.show()
             ci.ledsettings.add_instance(ci.menu, ci.ledstrip)
 
