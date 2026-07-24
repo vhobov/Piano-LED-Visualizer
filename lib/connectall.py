@@ -179,14 +179,26 @@ def _check_connection_exists(aconnect_output, input_port_id, secondary_input_por
         return False
 
 
+def _is_internal_client(client_id, client_name):
+    """True for ALSA clients that aren't real user-facing MIDI devices -
+    the kernel Timer/Announce client, the Midi Through virtual port, and the
+    per-process RtMidiIn/RtMidiOut clients mido itself creates whenever it
+    opens a port. Mirrors the same filter connectall() and the Ports page's
+    raw connection matrix already use to decide what's selectable."""
+    return client_id == "0" or "Through" in client_name or "RtMidi" in client_name
+
+
 def _parse_client_ports_and_links(aconnect_output):
-    """Parse `aconnect -l` output into (id_to_name, links).
-    id_to_name maps 'client:port' -> (client_name, port_name). links is a list
-    of (source_id, destination_id) 'client:port' tuples for every live
-    'Connecting To:' edge."""
+    """Parse `aconnect -l` output into (id_to_name, links), skipping internal
+    ALSA clients entirely (see _is_internal_client) so neither their ports nor
+    any connection touching them show up. id_to_name maps 'client:port' ->
+    (client_name, port_name). links is a list of (source_id, destination_id)
+    'client:port' tuples for every live 'Connecting To:' edge between two
+    non-internal ports."""
     id_to_name = {}
     links = []
     current_client = current_client_name = current_port = None
+    skip_client = False
 
     for line in aconnect_output.splitlines():
         stripped = line.strip()
@@ -195,6 +207,10 @@ def _parse_client_ports_and_links(aconnect_output):
         if client_match:
             current_client, current_client_name = client_match.group(1), client_match.group(2)
             current_port = None
+            skip_client = _is_internal_client(current_client, current_client_name)
+            continue
+
+        if skip_client:
             continue
 
         if current_client and line.startswith('    ') and not line.startswith('\t'):
@@ -212,27 +228,22 @@ def _parse_client_ports_and_links(aconnect_output):
     return id_to_name, links
 
 
-def capture_custom_connections(exclude_pairs=()):
-    """Snapshot every currently-live ALSA MIDI connection as a list of
-    {source_client, source_port, dest_client, dest_port} dicts, keyed by
-    descriptive device/port name rather than 'client:port' ID - those IDs get
-    reshuffled on every reboot or USB replug, but the names stay stable.
-    exclude_pairs is an iterable of (source_id, dest_id) 'client:port' tuples
-    to leave out (e.g. the input/secondary bridge connectall() already
-    re-establishes on its own, so a saved Setup doesn't store it twice)."""
+def capture_custom_connections():
+    """Snapshot every currently-live custom ALSA MIDI connection (excluding
+    internal clients - see _is_internal_client) as a list of {source_client,
+    source_port, dest_client, dest_port} dicts, keyed by descriptive
+    device/port name rather than 'client:port' ID - those IDs get reshuffled
+    on every reboot or USB replug, but the names stay stable."""
     try:
         output = subprocess.check_output(["aconnect", "-l"], text=True)
     except Exception:
         return []
 
     id_to_name, links = _parse_client_ports_and_links(output)
-    exclude = {tuple(p) for p in exclude_pairs}
 
     connections = []
     seen = set()
     for source_id, dest_id in links:
-        if (source_id, dest_id) in exclude or (dest_id, source_id) in exclude:
-            continue
         if source_id not in id_to_name or dest_id not in id_to_name or source_id == dest_id:
             continue
         if (source_id, dest_id) in seen:
@@ -259,29 +270,49 @@ def _resolve_id(id_to_name, client_name, port_name):
     return None
 
 
-def apply_custom_connections(connections):
-    """Re-create previously captured custom ALSA connections (see
-    capture_custom_connections) by re-resolving each endpoint's descriptive
-    name against the currently live port list. Best-effort per connection: a
-    device that isn't plugged in right now is skipped, not fatal."""
-    if not connections:
-        return
+def apply_custom_connections(connections, managed_pair=None):
+    """Make the live custom ALSA connections match `connections` exactly:
+    disconnects any current custom connection that isn't in the list, then
+    (re)creates every one that is, re-resolving each endpoint's descriptive
+    name against the currently live port list since 'client:port' IDs get
+    reshuffled by reboot/replug. A device that isn't plugged in right now is
+    skipped, not fatal.
 
+    managed_pair, if given, is the (input_id, secondary_id) 'client:port' pair
+    connectall() itself just bridged - it's left untouched by the cleanup pass
+    even if it isn't part of `connections`, so this function never undoes the
+    primary input/secondary bridge."""
     try:
         output = subprocess.check_output(["aconnect", "-l"], text=True)
     except Exception as e:
         print(f"ERROR: Could not list ALSA ports to restore custom connections: {e}")
         return
 
-    id_to_name, _ = _parse_client_ports_and_links(output)
+    id_to_name, live_links = _parse_client_ports_and_links(output)
 
-    for conn in connections:
+    protected = set()
+    if managed_pair:
+        protected = {tuple(managed_pair), tuple(reversed(managed_pair))}
+
+    wanted = set()
+    for conn in connections or []:
         source_id = _resolve_id(id_to_name, conn.get("source_client"), conn.get("source_port"))
         dest_id = _resolve_id(id_to_name, conn.get("dest_client"), conn.get("dest_port"))
         if not source_id or not dest_id:
             print(f"WARNING: Skipping custom connection, device not found: "
                   f"{conn.get('source_client')} -> {conn.get('dest_client')}")
             continue
+        wanted.add((source_id, dest_id))
+
+    for source_id, dest_id in live_links:
+        if (source_id, dest_id) in protected or (source_id, dest_id) in wanted:
+            continue
+        result = subprocess.run(["aconnect", "-d", source_id, dest_id], capture_output=True, text=True)
+        if result.returncode != 0:
+            print(f"WARNING: Failed to remove stale custom connection {source_id} -> {dest_id}: "
+                  f"{result.stderr.strip()}")
+
+    for source_id, dest_id in wanted:
         result = subprocess.run(["aconnect", source_id, dest_id], capture_output=True, text=True)
         if result.returncode != 0 and "already subscribed" not in result.stderr:
             print(f"WARNING: Failed to restore custom connection {source_id} -> {dest_id}: {result.stderr.strip()}")

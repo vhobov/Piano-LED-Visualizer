@@ -334,7 +334,14 @@ class MidiPorts:
 
             if setup.get("auto_connect"):
                 connectall.connectall(self.usersettings)
-                connectall.apply_custom_connections(setup.get("extra_connections") or [])
+                managed_pair = None
+                if (input_port and secondary_input_port and input_port != "default"
+                        and secondary_input_port != "default" and input_port != secondary_input_port):
+                    try:
+                        managed_pair = (input_port.split()[-1], secondary_input_port.split()[-1])
+                    except Exception:
+                        managed_pair = None
+                connectall.apply_custom_connections(setup.get("extra_connections") or [], managed_pair=managed_pair)
 
             if setup.get("id") is not None:
                 self.usersettings.change_setting_value("active_port_setup_id", setup["id"])

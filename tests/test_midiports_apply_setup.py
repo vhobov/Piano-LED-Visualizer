@@ -106,7 +106,11 @@ class TestMidiPortsApplySetup(unittest.TestCase):
 
         self.midiports.apply_setup(setup)
 
-        self.mock_apply_custom_connections.assert_called_once_with(extra)
+        # input_port/secondary_input_port resolve unchanged here (mido's port
+        # list is mocked empty), so the connectall-managed pair is exactly
+        # ("Lenovo", "Roland") - it must be passed through so the cleanup
+        # pass in apply_custom_connections never undoes this bridge.
+        self.mock_apply_custom_connections.assert_called_once_with(extra, managed_pair=("Lenovo", "Roland"))
 
     def test_apply_setup_shows_error_level_message_on_failure(self):
         setup = {"id": 4, "name": "Synthesia", "input_port": "Roland",

@@ -2333,18 +2333,7 @@ def api_update_highscore():
 
 def _port_setup_payload(data):
     # Auto-capture whatever custom connections are currently drawn on the raw
-    # connection matrix, so a Setup remembers them too - excluding the
-    # input/secondary bridge, since connectall() already re-establishes that
-    # one on its own and doesn't need it duplicated here.
-    exclude_pairs = []
-    try:
-        current_input = app_state.usersettings.get_setting_value("input_port")
-        current_secondary = app_state.usersettings.get_setting_value("secondary_input_port")
-        if current_input and current_secondary and "default" not in (current_input, current_secondary):
-            exclude_pairs = [(current_input.split()[-1], current_secondary.split()[-1])]
-    except Exception:
-        pass
-
+    # connection matrix, so a Setup remembers them too.
     return {
         "name": data.get('name'),
         "priority": data.get('priority'),
@@ -2352,7 +2341,7 @@ def _port_setup_payload(data):
         "secondary_input_port": data.get('secondary_input_port', 'default'),
         "play_port": data.get('play_port'),
         "auto_connect": bool(data.get('auto_connect', False)),
-        "extra_connections": connectall.capture_custom_connections(exclude_pairs=exclude_pairs),
+        "extra_connections": connectall.capture_custom_connections(),
     }
 
 @webinterface.route('/api/get_port_setups', methods=['GET'])
