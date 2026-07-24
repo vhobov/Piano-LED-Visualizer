@@ -207,6 +207,8 @@ function get_homepage_data_loop() {
                 const timezoneSelect = document.getElementById("timezone");
                 if (timezoneSelect) {
                     timezoneSelect.value = response_pc_stats.timezone;
+                    // Store current value for confirmation handler
+                    timezoneSelect.setAttribute('data-current-value', response_pc_stats.timezone);
                 }
             }
 

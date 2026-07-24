@@ -371,7 +371,7 @@
                     <label data-translate="timezone" class="block text-xs font-semibold mb-2 text-gray-600 dark:text-gray-400">Timezone</label>
                     <div class="relative">
                         <select id="timezone" class="h-10 block appearance-none w-full glass-light py-2 px-2 pr-8 rounded-glass leading-tight transition-smooth-fast"
-                                onchange="change_setting('timezone', this.value)">
+                                onchange="handleTimezoneChange(this.value, this)">
                             <option value="UTC">UTC</option>
                         </select>
                         <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-700 dark:text-gray-200">

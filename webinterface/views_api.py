@@ -1102,7 +1102,11 @@ def change_setting():
         if hasattr(app_state.platform, 'set_timezone'):
             success = app_state.platform.set_timezone(value)
             if success:
-                return jsonify(success=True, message="Timezone changed successfully.")
+                # The OS timezone is now correct, but the already-running
+                # visualizer process (which draws the LCD clock) cached the
+                # old one - restart it, same as the LED pin / LCD type changes
+                app_state.platform.restart_visualizer()
+                return jsonify(success=True, restart_required=True, message="Timezone changed. Restarting visualizer...")
             else:
                 return jsonify(success=False, error="Failed to change timezone.")
         else:

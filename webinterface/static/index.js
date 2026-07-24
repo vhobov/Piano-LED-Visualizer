@@ -267,6 +267,53 @@ function handleLedPinChange(value, selectElement) {
     });
 }
 
+function handleTimezoneChange(value, selectElement) {
+    const storedPrevious = selectElement.getAttribute('data-current-value');
+    const actualPrevious = storedPrevious || value;
+
+    const confirmMessage = translate('timezone_change_confirm').replace('{0}', value);
+
+    showConfirm(confirmMessage, function() {
+        selectElement.setAttribute('data-current-value', value);
+
+        selectElement.disabled = true;
+        selectElement.style.opacity = '0.6';
+
+        const xhttp = new XMLHttpRequest();
+        xhttp.onreadystatechange = function () {
+            if (this.readyState === 4 && this.status === 200) {
+                const response = JSON.parse(this.responseText);
+                if (response.success === true) {
+                    showAlert(translate('timezone_change_success'), 'info');
+                    // Reload page after delay to allow visualizer to restart (30 seconds)
+                    setTimeout(function() {
+                        window.location.reload();
+                    }, 30000);
+                } else {
+                    selectElement.value = actualPrevious;
+                    selectElement.setAttribute('data-current-value', actualPrevious);
+                    selectElement.disabled = false;
+                    selectElement.style.opacity = '1';
+                    const errorMsg = translate('timezone_change_error').replace('{0}', response.error || 'Unknown error');
+                    showAlert(errorMsg, 'error');
+                }
+            } else if (this.readyState === 4) {
+                selectElement.value = actualPrevious;
+                selectElement.setAttribute('data-current-value', actualPrevious);
+                selectElement.disabled = false;
+                selectElement.style.opacity = '1';
+                const errorMsg = translate('timezone_change_error').replace('{0}', 'Please try again.');
+                showAlert(errorMsg, 'error');
+            }
+        };
+        xhttp.open("GET", "/api/change_setting?setting_name=timezone&value=" + encodeURIComponent(value), true);
+        xhttp.send();
+    }, function() {
+        selectElement.value = actualPrevious;
+        selectElement.setAttribute('data-current-value', actualPrevious);
+    });
+}
+
 function change_setting(setting_name, value, second_value = false, disable_sequence = false) {
     const xhttp = new XMLHttpRequest();
     try {
