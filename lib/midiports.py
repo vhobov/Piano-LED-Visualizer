@@ -337,13 +337,16 @@ class MidiPorts:
                 self.usersettings.change_setting_value("active_port_setup_id", setup["id"])
 
             if self.menu:
-                self.menu.render_message("Applied setup:", name, 1500)
+                # render_message() blocks the whole main loop for its
+                # duration (MIDI/LED processing pauses) - 2.5s balances
+                # readability against how long everything else freezes.
+                self.menu.render_message("Applied setup:", name, 2500)
                 self.menu.show()
             return True
         except Exception as e:
             logger.warning(f"Failed applying port setup '{name}': {e}")
             if self.menu:
-                self.menu.render_message("Can't apply setup:", name, 1500)
+                self.menu.render_message("Can't apply setup:", name, 2500)
                 self.menu.show()
             return False
 
