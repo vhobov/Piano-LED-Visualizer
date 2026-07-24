@@ -20,8 +20,8 @@ class FakeMenu:
     def __init__(self):
         self.messages = []
 
-    def render_message(self, title, message, delay=500):
-        self.messages.append((title, message))
+    def render_message(self, title, message, delay=500, level="info"):
+        self.messages.append((title, message, level))
 
     def show(self):
         pass
@@ -85,6 +85,7 @@ class TestMidiPortsApplySetup(unittest.TestCase):
         self.mock_connectall.assert_called_once()
         # One combined LCD message, not one per changed port
         self.assertEqual(len(self.menu.messages), 1)
+        self.assertEqual(self.menu.messages[0][2], "success")
 
     def test_apply_setup_skips_connectall_when_auto_connect_false(self):
         setup = {"id": 3, "name": "Piano only", "input_port": "Roland",
@@ -93,6 +94,17 @@ class TestMidiPortsApplySetup(unittest.TestCase):
         self.midiports.apply_setup(setup)
 
         self.mock_connectall.assert_not_called()
+
+    def test_apply_setup_shows_error_level_message_on_failure(self):
+        setup = {"id": 4, "name": "Synthesia", "input_port": "Roland",
+                 "secondary_input_port": "Lenovo", "play_port": "Roland", "auto_connect": True}
+        self.mock_connectall.side_effect = Exception("aconnect failed")
+
+        result = self.midiports.apply_setup(setup)
+
+        self.assertFalse(result)
+        self.assertEqual(len(self.menu.messages), 1)
+        self.assertEqual(self.menu.messages[0][2], "error")
 
     def test_apply_setup_resolves_stale_client_port_id(self):
         # Setup was saved when the Roland's ALSA client:port ID was "20:0";

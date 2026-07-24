@@ -72,7 +72,7 @@ class SaveMIDI:
 
         self.messages_to_save = []
         self.is_recording = False
-        self.menu.render_message("File saved", filename + ".mid", 1500)
+        self.menu.render_message("File saved", filename + ".mid", 1500, level="success")
 
     def restart_time(self):
         self.start_time = time.perf_counter()

@@ -296,14 +296,14 @@ class MidiPorts:
                 self.playport = mido.open_output(portname)
                 self.usersettings.change_setting_value("play_port", portname)
             if notify:
-                self.menu.render_message("Changing " + port + " to:", portname, 1500)
+                self.menu.render_message("Changing " + port + " to:", portname, 1500, level="success")
             if destroy_old is not None:
                 destroy_old.close()
             if notify:
                 self.menu.show()
         except Exception:
             if notify:
-                self.menu.render_message("Can't change " + port + " to:", portname, 1500)
+                self.menu.render_message("Can't change " + port + " to:", portname, 1500, level="error")
                 self.menu.show()
 
     def apply_setup(self, setup):
@@ -340,13 +340,13 @@ class MidiPorts:
                 # render_message() blocks the whole main loop for its
                 # duration (MIDI/LED processing pauses) - 2.5s balances
                 # readability against how long everything else freezes.
-                self.menu.render_message("Applied setup:", name, 2500)
+                self.menu.render_message("Applied setup:", name, 2500, level="success")
                 self.menu.show()
             return True
         except Exception as e:
             logger.warning(f"Failed applying port setup '{name}': {e}")
             if self.menu:
-                self.menu.render_message("Can't apply setup:", name, 2500)
+                self.menu.render_message("Can't apply setup:", name, 2500, level="error")
                 self.menu.show()
             return False
 

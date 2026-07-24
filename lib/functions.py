@@ -123,9 +123,9 @@ def play_midi(song_path, midiports, saving, menu, ledsettings, ledstrip):
         # print('play time: {:.2f} s (expected {:.2f})'.format(time.perf_counter() - t0, length))
         # saving.is_playing_midi = False
     except FileNotFoundError:
-        menu.render_message(song_path, "File not found", 2000)
+        menu.render_message(song_path, "File not found", 2000, level="error")
     except Exception as e:
-        menu.render_message(song_path, "Error while playing song " + str(e), 2000)
+        menu.render_message(song_path, "Error while playing song " + str(e), 2000, level="error")
         logger.warning(e)
     finally:
         midiports.midifile_queue.clear()
@@ -402,7 +402,7 @@ def screensaver(menu, midiports, saving, ledstrip, ledsettings, state_manager=No
     try:
         midiports.inport.poll()
     except Exception as e:
-        menu.render_message("Error while getting ports", "", 2000)
+        menu.render_message("Error while getting ports", "", 2000, level="error")
         logger.warning("Error while getting ports " + str(e))
 
     while True:

@@ -49,6 +49,10 @@ class UITheme:
         self.value_right_margin = 5  # Right margin for values
         self.value_gap = 5  # Gap between label and value
 
+        # Message colors (render_message levels)
+        self.error_color = (220, 60, 60)    # Red - failed operations
+        self.success_color = (60, 180, 90)   # Green - completed operations
+
 
 class MenuLCD:
     def __init__(self, xml_file_name, args, usersettings, ledsettings, ledstrip, learning, saving, midiports, hotspot, platform, port_setup_manager=None):
@@ -1369,11 +1373,19 @@ class MenuLCD:
             self.scroll_offset = 0
             self.show(self.parent_menu, location_readable)
 
-    def render_message(self, title, message, delay=500):
+    def render_message(self, title, message, delay=500, level="info"):
+        """level: "error" (red), "success" (green), or "info" (default text color)."""
+        if level == "error":
+            color = self.theme.error_color
+        elif level == "success":
+            color = self.theme.success_color
+        else:
+            color = self.text_color
+
         self.image = Image.new("RGB", (self.LCD.width, self.LCD.height), self.background_color)
         self.draw = ImageDraw.Draw(self.image)
-        self.draw.text((self.scale(3), self.scale(55)), title, fill=self.text_color, font=self.font)
-        self.draw.text((self.scale(3), self.scale(65)), str(message), fill=self.text_color, font=self.font)
+        self.draw.text((self.scale(3), self.scale(55)), title, fill=color, font=self.font)
+        self.draw.text((self.scale(3), self.scale(65)), str(message), fill=color, font=self.font)
         self.LCD.LCD_ShowImage(self.rotate_image(self.image), 0, 0)
         LCD_Config.Driver_Delay_ms(delay)
 
@@ -1509,7 +1521,7 @@ class MenuLCD:
             if choice == "Save MIDI":
                 now = datetime.datetime.now()
                 current_date = now.strftime("%Y-%m-%d %H:%M")
-                self.render_message("Recording stopped", "Saved as " + current_date, 2000)
+                self.render_message("Recording stopped", "Saved as " + current_date, 2000, level="success")
                 self.saving.save(current_date)
                 self.update_songs()
             if choice == "Start recording":
@@ -1802,7 +1814,7 @@ class MenuLCD:
             if choice == "Update":
                 refresh_result = self.update_sequence_list()
                 if not refresh_result:
-                    self.render_message("Something went wrong", "Make sure your sequence file is correct", 1500)
+                    self.render_message("Something went wrong", "Make sure your sequence file is correct", 1500, level="error")
                 self.show()
             else:
                 self.ledsettings.set_sequence(self.pointer_position, 0)
