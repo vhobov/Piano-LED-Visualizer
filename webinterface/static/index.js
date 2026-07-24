@@ -934,18 +934,23 @@ function apply_port_setup(id) {
 }
 
 function delete_port_setup(id) {
-    fetch('/api/delete_port_setup', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id })
-    })
-        .then(response => response.json())
-        .then(() => {
-            load_port_setups();
+    const setup = portSetupsState.setups.find(s => s.id === id);
+    const confirmMessage = translate('delete_port_setup_confirm').replace('{0}', setup ? setup.name : '');
+
+    showConfirm(confirmMessage, function() {
+        fetch('/api/delete_port_setup', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id })
         })
-        .catch(error => {
-            console.error('Error deleting port setup:', error);
-        });
+            .then(response => response.json())
+            .then(() => {
+                load_port_setups();
+            })
+            .catch(error => {
+                console.error('Error deleting port setup:', error);
+            });
+    });
 }
 
 function update_port_selection_ui() {

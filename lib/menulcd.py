@@ -73,6 +73,7 @@ class MenuLCD:
         self._port_setups_menu_cache = {}
         self._cached_active_setup_id = None
         self._cached_active_setup_name = None
+        self._message_hold_until = 0
         self.args = args
         self._font_cache = {}
         self._title_image_cache = {}
@@ -915,7 +916,13 @@ class MenuLCD:
         selected_sid = None
         if self.screen_on == 0:
             return False
-        
+
+        # Don't paint over a render_message() toast that's still supposed to
+        # be showing - see the comment on render_message() for why this can't
+        # just rely on that call's own blocking delay.
+        if time.monotonic() < self._message_hold_until:
+            return False
+
         if self.current_location in ("Velocity_Rainbow", "Rainbow_Colors"):
             self.update_colormap()
 
@@ -1374,7 +1381,16 @@ class MenuLCD:
             self.show(self.parent_menu, location_readable)
 
     def render_message(self, title, message, delay=500, level="info"):
-        """level: "error" (red), "success" (green), or "info" (default text color)."""
+        """level: "error" (red), "success" (green), or "info" (default text color).
+
+        Callers on the main loop's own thread (GPIO/menu navigation) already
+        get an effectively-exclusive screen for `delay` ms, since that thread
+        blocks here and nothing else redraws meanwhile. But web-triggered
+        applies run on a separate Flask/waitress request thread, which does NOT
+        block the main loop - so without _message_hold_until, update_display()'s
+        periodic refresh (running concurrently on the main thread) could paint
+        over this message well before `delay` actually elapses.
+        """
         if level == "error":
             color = self.theme.error_color
         elif level == "success":
@@ -1382,6 +1398,7 @@ class MenuLCD:
         else:
             color = self.text_color
 
+        self._message_hold_until = time.monotonic() + (delay / 1000.0)
         self.image = Image.new("RGB", (self.LCD.width, self.LCD.height), self.background_color)
         self.draw = ImageDraw.Draw(self.image)
         self.draw.text((self.scale(3), self.scale(55)), title, fill=color, font=self.font)
