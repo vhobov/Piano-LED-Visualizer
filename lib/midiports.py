@@ -39,6 +39,19 @@ def _get_cached_output_names():
                 _cached_output_names = []
         return _cached_output_names.copy()
 
+def _compute_managed_pair(input_port, secondary_input_port):
+    """The (input_id, secondary_id) 'client:port' pair connectall() bridges,
+    so apply_custom_connections' cleanup pass never disconnects it. None when
+    there's nothing for connectall() to actually bridge."""
+    if not (input_port and secondary_input_port and input_port != "default"
+            and secondary_input_port != "default" and input_port != secondary_input_port):
+        return None
+    try:
+        return (input_port.split()[-1], secondary_input_port.split()[-1])
+    except Exception:
+        return None
+
+
 def _refresh_port_cache():
     """Refresh the cached port names."""
     global _cached_input_names, _cached_output_names
@@ -280,6 +293,29 @@ class MidiPorts:
         self.reconnect_ports()
         # Now connect all the remaining ports
         connectall.connectall(self.usersettings)
+        self._reapply_active_setup_extra_connections()
+
+    def _reapply_active_setup_extra_connections(self):
+        """Re-assert the active Setup's manually-drawn connections after the
+        plain input/secondary bridge. Needed because something else - a
+        replugged device re-enumerating, the rtpmidid daemon auto-wiring
+        itself to newly-appeared hardware - can grab the port in the gap
+        between a hotplug event and this call, leaving the wrong thing
+        connected until a Setup happens to be re-applied by hand."""
+        port_setup_manager = getattr(self, "port_setup_manager", None)
+        if not port_setup_manager:
+            return
+        try:
+            setup = port_setup_manager.get_setup(int(self.usersettings.get_setting_value("active_port_setup_id")))
+        except (TypeError, ValueError):
+            return
+        if not setup or not setup.get("auto_connect"):
+            return
+
+        input_port = self.usersettings.get_setting_value("input_port")
+        secondary_input_port = self.usersettings.get_setting_value("secondary_input_port")
+        managed_pair = _compute_managed_pair(input_port, secondary_input_port)
+        connectall.apply_custom_connections(setup.get("extra_connections") or [], managed_pair=managed_pair)
 
     def add_instance(self, menu):
         self.menu = menu
@@ -334,13 +370,7 @@ class MidiPorts:
 
             if setup.get("auto_connect"):
                 connectall.connectall(self.usersettings)
-                managed_pair = None
-                if (input_port and secondary_input_port and input_port != "default"
-                        and secondary_input_port != "default" and input_port != secondary_input_port):
-                    try:
-                        managed_pair = (input_port.split()[-1], secondary_input_port.split()[-1])
-                    except Exception:
-                        managed_pair = None
+                managed_pair = _compute_managed_pair(input_port, secondary_input_port)
                 connectall.apply_custom_connections(setup.get("extra_connections") or [], managed_pair=managed_pair)
 
             if setup.get("id") is not None:

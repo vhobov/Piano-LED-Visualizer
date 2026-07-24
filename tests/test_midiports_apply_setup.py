@@ -180,6 +180,45 @@ class TestMidiPortsApplySetup(unittest.TestCase):
         third = self.midiports.cycle_port_setup(self.psm)
         self.assertEqual(third["name"], "A")
 
+    def test_connectall_reapplies_active_setup_extra_connections(self):
+        # Simulates hotplug reconnection (auto_reconnect_loop -> MidiPorts.
+        # connectall()): the active Setup's custom wiring must be re-asserted
+        # too, not just the plain input/secondary bridge - otherwise whatever
+        # else grabbed the port in the meantime (e.g. rtpmidid auto-wiring
+        # itself to newly-appeared hardware) is left connected instead.
+        extra = [{"source_client": "Roland Digital Piano", "source_port": "Roland Digital Piano MIDI 1",
+                  "dest_client": "Lenovo Tab P11", "dest_port": "Lenovo Tab P11 MIDI 1"}]
+        setup = self.psm.create_setup("Synthesia", 1, "Lenovo", "Roland", "Lenovo", True,
+                                       extra_connections=extra)
+        self.usersettings.change_setting_value("active_port_setup_id", setup["id"])
+        self.usersettings.change_setting_value("input_port", "Lenovo")
+        self.usersettings.change_setting_value("secondary_input_port", "Roland")
+        self.midiports.port_setup_manager = self.psm
+
+        self.midiports.connectall()
+
+        self.mock_apply_custom_connections.assert_called_once_with(extra, managed_pair=("Lenovo", "Roland"))
+
+    def test_connectall_noop_without_port_setup_manager(self):
+        self.midiports.connectall()
+        self.mock_apply_custom_connections.assert_not_called()
+
+    def test_connectall_noop_when_active_setup_auto_connect_false(self):
+        setup = self.psm.create_setup("Piano only", 1, "Roland", "default", "Roland", False)
+        self.usersettings.change_setting_value("active_port_setup_id", setup["id"])
+        self.midiports.port_setup_manager = self.psm
+
+        self.midiports.connectall()
+
+        self.mock_apply_custom_connections.assert_not_called()
+
+    def test_connectall_noop_when_no_active_setup_id(self):
+        self.midiports.port_setup_manager = self.psm
+
+        self.midiports.connectall()
+
+        self.mock_apply_custom_connections.assert_not_called()
+
 
 if __name__ == '__main__':
     unittest.main()

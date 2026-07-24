@@ -109,6 +109,7 @@ class ComponentInitializer:
         t.start()
 
         self.midiports.add_instance(self.menu)
+        self.midiports.port_setup_manager = self.port_setup_manager
         self.ledsettings.add_instance(self.menu, self.ledstrip)
         self.saving.add_instance(self.menu)
         self.learning.add_instance(self.menu)
