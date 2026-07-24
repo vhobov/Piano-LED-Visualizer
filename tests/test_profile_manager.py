@@ -21,8 +21,10 @@ class TestProfileManager(unittest.TestCase):
         self.pm = ProfileManager(db_path=self.db_path, songs_dir="nonexistent_dir_xyz")
 
     def tearDown(self):
-        if os.path.exists(self.db_path):
-            os.remove(self.db_path)
+        for suffix in ("", "-wal", "-shm"):
+            path = self.db_path + suffix
+            if os.path.exists(path):
+                os.remove(path)
 
     def test_connect_closes_connection_after_use(self):
         with self.pm._connect() as conn:
@@ -30,6 +32,13 @@ class TestProfileManager(unittest.TestCase):
         # The connection must actually be closed, not just committed/rolled back
         with self.assertRaises(sqlite3.ProgrammingError):
             conn.execute("SELECT 1")
+
+    def test_connect_enables_wal_mode(self):
+        # WAL avoids the fsync-heavy journal dance on every commit - important
+        # for SD card longevity given how often profile data gets written.
+        with self.pm._connect() as conn:
+            mode = conn.execute("PRAGMA journal_mode;").fetchone()[0]
+        self.assertEqual(mode.lower(), "wal")
 
     def test_create_and_get_profile(self):
         profile_id = self.pm.create_profile("Bob")

@@ -35,6 +35,13 @@ class ProfileManager:
         conn = sqlite3.connect(self.db_path)
         try:
             conn.execute("PRAGMA foreign_keys = ON;")
+            # WAL avoids the journal-file create/fsync/delete dance that the
+            # default rollback-journal mode does on every commit - meaningful
+            # for SD card longevity given how often highscores/learning
+            # settings get written during Practice/Learning mode.
+            # synchronous=NORMAL is safe under WAL (still durable on commit).
+            conn.execute("PRAGMA journal_mode=WAL;")
+            conn.execute("PRAGMA synchronous=NORMAL;")
         except Exception:
             pass
         try:
@@ -177,13 +184,17 @@ class ProfileManager:
                 "INSERT OR IGNORE INTO highscores(profile_id, song_name, high_score) VALUES(?,?,0)",
                 (profile_id, song_name)
             )
+            inserted = cur.rowcount > 0
             # Only update if higher
             cur.execute(
                 "UPDATE highscores SET high_score=? WHERE profile_id=? AND song_name=? AND high_score < ?",
                 (new_score, profile_id, song_name, new_score)
             )
             changed = cur.rowcount > 0
-            conn.commit()
+            # Skip the commit's fsync entirely when nothing actually changed
+            # (e.g. replaying a song without beating the existing highscore)
+            if inserted or changed:
+                conn.commit()
         return changed
 
     def get_learning_settings(self, profile_id: int, song_name: str) -> Dict[str, int]:

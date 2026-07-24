@@ -49,6 +49,15 @@ class PortSetupManager:
     def _connect(self):
         conn = sqlite3.connect(self.db_path)
         try:
+            # WAL avoids the journal-file create/fsync/delete dance that the
+            # default rollback-journal mode does on every commit - meaningful
+            # for SD card longevity given how often setups get saved/applied.
+            # synchronous=NORMAL is safe under WAL (still durable on commit).
+            conn.execute("PRAGMA journal_mode=WAL;")
+            conn.execute("PRAGMA synchronous=NORMAL;")
+        except Exception:
+            pass
+        try:
             yield conn
         finally:
             conn.close()

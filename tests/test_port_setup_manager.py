@@ -17,8 +17,17 @@ class TestPortSetupManager(unittest.TestCase):
         self.psm = PortSetupManager(db_path=self.db_path)
 
     def tearDown(self):
-        if os.path.exists(self.db_path):
-            os.remove(self.db_path)
+        for suffix in ("", "-wal", "-shm"):
+            path = self.db_path + suffix
+            if os.path.exists(path):
+                os.remove(path)
+
+    def test_connect_enables_wal_mode(self):
+        # WAL avoids the fsync-heavy journal dance on every commit - important
+        # for SD card longevity given how often setups get saved/applied.
+        with self.psm._connect() as conn:
+            mode = conn.execute("PRAGMA journal_mode;").fetchone()[0]
+        self.assertEqual(mode.lower(), "wal")
 
     def test_01_create_and_list_ordered_by_priority(self):
         self.psm.create_setup("Synthesia", 9, "Lenovo", "Roland", "Lenovo", True)
