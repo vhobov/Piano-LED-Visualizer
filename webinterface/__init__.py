@@ -52,25 +52,22 @@ def start_server(loop):
         logger.info("Starting MIDI broadcast task")
         while True:
             try:
-                if app_state.practice_active:
+                if app_state.practice_active and app_state.websocket_midi_clients:
                     messages = []
                     # Safely move messages from queue to local list
-                    # deque append is atomic, but we use a robust pattern: 
+                    # deque append is atomic, but we use a robust pattern:
                     # popleft until empty
                     while True:
                         try:
                             messages.append(webinterface.websocket_midi_send.popleft())
                         except IndexError:
                             break
-                    
+
                     if messages:
-                        if not app_state.websocket_midi_clients:
-                            continue
-                            
                         # Create send tasks for all clients
                         send_tasks = []
                         disconnected_clients = set()
-                        
+
                         for ws in app_state.websocket_midi_clients:
                             for msg in messages:
                                 try:
@@ -78,17 +75,23 @@ def start_server(loop):
                                     send_tasks.append(asyncio.create_task(ws.send(str(msg))))
                                 except Exception:
                                     disconnected_clients.add(ws)
-                        
+
                         if send_tasks:
                             await asyncio.gather(*send_tasks, return_exceptions=True)
-                            
+
                         # Cleanup disconnected clients
                         if disconnected_clients:
                             app_state.websocket_midi_clients -= disconnected_clients
-                            
-                await asyncio.sleep(0.01)
+
+                    await asyncio.sleep(0.01)
+                else:
+                    # No active practice session or no connected clients:
+                    # nothing to broadcast, so back off instead of polling
+                    # at 100Hz forever regardless of activity
+                    await asyncio.sleep(0.5)
             except Exception as e:
                 logger.error(f"Error in MIDI broadcast task: {e}")
+                await asyncio.sleep(0.5)
                 await asyncio.sleep(1)
 
     async def learning(websocket):
@@ -102,7 +105,7 @@ def start_server(loop):
                     while True:
                         await asyncio.sleep(0.01)
                         # Send learning messages
-                        for msg in app_state.learning.socket_send[:]:
+                        for msg in list(app_state.learning.socket_send):
                             await websocket.send(str(msg))
                             app_state.learning.socket_send.remove(msg)
                 except websockets.exceptions.ConnectionClosed:

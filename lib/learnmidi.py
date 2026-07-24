@@ -2,6 +2,7 @@ import ast
 import threading
 import time
 import json
+from collections import deque
 
 import mido
 import subprocess
@@ -74,7 +75,9 @@ class LearnMIDI:
         self.show_future_notes = int(usersettings.get_setting_value("show_future_notes"))
 
         self.notes_time = []
-        self.socket_send = []
+        # Bounded so a stale/never-opened Practice page (no websocket client
+        # draining it) can't grow this without limit while midi_logging is on
+        self.socket_send = deque(maxlen=1000)
 
         # Store software's notes that need to be played when user presses their key
         self.pending_software_notes = []

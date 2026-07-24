@@ -10,6 +10,11 @@ _cached_input_names = None
 _cached_output_names = None
 _cache_lock = threading.Lock()
 
+# auto_reconnect_loop's steady-state poll interval. USB hotplug detection
+# doesn't need sub-second latency, so this stays well above the port-cache
+# refresh cost of frequent polling on a 24/7-running Pi.
+AUTO_RECONNECT_POLL_SECONDS = 15
+
 def _get_cached_input_names():
     """Get input port names, using cache if available."""
     global _cached_input_names
@@ -441,9 +446,10 @@ class MidiPorts:
                     if len(webinterface.websocket_midi_send) < 100:
                         webinterface.websocket_midi_send.append(midi_string)
         except Exception as e:
-            # Silently fail if webinterface not available (e.g., during testing)
-            pass
-    
+            # webinterface may legitimately be unavailable (e.g. during testing),
+            # but log at debug level so a real bug here isn't silently invisible
+            logger.debug(f"Skipping websocket MIDI forward: {e}")
+
     def add_websocket_midi_message(self, msg_string):
         """
         Parse a MIDI message string from websocket and add to websocket_midi_queue.
@@ -581,7 +587,10 @@ class MidiPorts:
 
                 last_input_present = input_present
                 last_secondary_present = secondary_present
-                time.sleep(3)
+                # USB hotplug detection doesn't need sub-second latency; a
+                # long interval meaningfully cuts continuous ALSA enumeration
+                # overhead over a 24/7 uptime (see AUTO_RECONNECT_POLL_SECONDS)
+                time.sleep(AUTO_RECONNECT_POLL_SECONDS)
             except Exception as e:
                 logger.info("auto_reconnect_loop error: {}".format(e))
                 time.sleep(5)

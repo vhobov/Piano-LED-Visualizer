@@ -1,5 +1,6 @@
 import os
 from subprocess import call
+from types import SimpleNamespace
 from xml.dom import minidom
 import webcolors as wc
 from PIL import ImageFont, Image, ImageDraw
@@ -1306,9 +1307,7 @@ class MenuLCD:
             cpu_history = []
 
         if card_space is None:
-            card_space.used = 0
-            card_space.total = 0
-            card_space.percent = 0
+            card_space = SimpleNamespace(used=0, total=0, percent=0)
 
         self.image = Image.new("RGB", (self.LCD.width, self.LCD.height), self.background_color)
         self.draw = ImageDraw.Draw(self.image)

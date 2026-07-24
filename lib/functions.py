@@ -388,6 +388,14 @@ def screensaver(menu, midiports, saving, ledstrip, ledsettings, state_manager=No
     download_start = 0
     local_ip = 0
 
+    # RAM/temp/disk barely change tick-to-tick (unlike the per-tick CPU chart),
+    # so refresh them on a slower cadence instead of every 0.2-1s tick
+    STATS_REFRESH_INTERVAL = 5.0
+    last_stats_refresh = 0.0
+    ram_usage = 0
+    temp = 0
+    card_space = 0
+
     if menu.screensaver_settings["local_ip"] == "1":
         local_ip = get_ip_address()
 
@@ -447,17 +455,21 @@ def screensaver(menu, midiports, saving, ledstrip, ledsettings, state_manager=No
             except:
                 cpu_average = last_cpu_average
 
+        refresh_stats = (time.perf_counter() - last_stats_refresh) >= STATS_REFRESH_INTERVAL
+
         if menu.screensaver_settings["ram"] == "1":
-            ram_usage = psutil.virtual_memory()[2]
+            if refresh_stats:
+                ram_usage = psutil.virtual_memory()[2]
         else:
             ram_usage = 0
 
         if menu.screensaver_settings["temp"] == "1":
-            try:
-                temp = find_between(str(psutil.sensors_temperatures()["cpu_thermal"]), "current=", ",")
-            except:
-                temp = 0
-            temp = round(float(temp), 1)
+            if refresh_stats:
+                try:
+                    temp = find_between(str(psutil.sensors_temperatures()["cpu_thermal"]), "current=", ",")
+                except:
+                    temp = 0
+                temp = round(float(temp), 1)
         else:
             temp = 0
 
@@ -483,9 +495,13 @@ def screensaver(menu, midiports, saving, ledstrip, ledsettings, state_manager=No
             upload = 0
             download = 0
         if menu.screensaver_settings["sd_card_space"] == "1":
-            card_space = psutil.disk_usage('/')
+            if refresh_stats:
+                card_space = psutil.disk_usage('/')
         else:
             card_space = 0
+
+        if refresh_stats:
+            last_stats_refresh = time.perf_counter()
 
         menu.render_screensaver(hour, date, cpu_usage, round(cpu_average, 1), ram_usage, temp, cpu_chart, upload,
                                 download, card_space, local_ip)
@@ -890,7 +906,7 @@ def startup_animation(ledstrip, ledsettings, duration_ms=2000, max_leds=30):
         if brightness > 0.5:
             brightness_increment *= -1
 
-        time.sleep(int(step_delay))
+        time.sleep(step_delay)
 
     for i in range(total_pixels):
         strip.setPixelColor(i, 0)
