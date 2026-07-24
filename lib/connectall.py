@@ -180,34 +180,49 @@ def _check_connection_exists(aconnect_output, input_port_id, secondary_input_por
 
 
 def _is_internal_client(client_id, client_name):
-    """True for ALSA clients that aren't real user-facing MIDI devices -
-    the kernel Timer/Announce client, the Midi Through virtual port, and the
-    per-process RtMidiIn/RtMidiOut clients mido itself creates whenever it
-    opens a port. Mirrors the same filter connectall() and the Ports page's
-    raw connection matrix already use to decide what's selectable."""
-    return client_id == "0" or "Through" in client_name or "RtMidi" in client_name
+    """True for ALSA clients that aren't real user-facing MIDI devices the
+    Setups feature should try to manage: the kernel Timer/Announce client,
+    the Midi Through virtual port, the per-process RtMidiIn/RtMidiOut clients
+    mido itself creates whenever it opens a port, and rtpmidid - which
+    auto-exports every local ALSA MIDI port over the network on its own and
+    reacts to losing that subscription by immediately re-establishing it, so
+    disconnecting/reconnecting it from here just fights the daemon instead of
+    reflecting anything the user actually drew."""
+    return (client_id == "0" or "Through" in client_name or "RtMidi" in client_name
+            or client_name == "rtpmidid")
 
 
 def _parse_client_ports_and_links(aconnect_output):
-    """Parse `aconnect -l` output into (id_to_name, links), skipping internal
+    """Parse `aconnect -l` output into (id_to_name, links), excluding internal
     ALSA clients entirely (see _is_internal_client) so neither their ports nor
-    any connection touching them show up. id_to_name maps 'client:port' ->
-    (client_name, port_name). links is a list of (source_id, destination_id)
-    'client:port' tuples for every live 'Connecting To:' edge between two
-    non-internal ports."""
+    any connection touching them - as either endpoint - show up. Two passes:
+    the first finds every internal client id regardless of where it's
+    declared in the dump, so a link to a client declared later in the output
+    is still filtered correctly. id_to_name maps 'client:port' -> (client_name,
+    port_name). links is a list of (source_id, destination_id) 'client:port'
+    tuples for every live 'Connecting To:' edge between two non-internal
+    ports."""
+    lines = aconnect_output.splitlines()
+
+    internal_client_ids = set()
+    for line in lines:
+        client_match = re.match(r"client (\d+):\s+'([^']+)'", line.strip())
+        if client_match and _is_internal_client(client_match.group(1), client_match.group(2)):
+            internal_client_ids.add(client_match.group(1))
+
     id_to_name = {}
     links = []
     current_client = current_client_name = current_port = None
     skip_client = False
 
-    for line in aconnect_output.splitlines():
+    for line in lines:
         stripped = line.strip()
 
         client_match = re.match(r"client (\d+):\s+'([^']+)'", stripped)
         if client_match:
             current_client, current_client_name = client_match.group(1), client_match.group(2)
             current_port = None
-            skip_client = _is_internal_client(current_client, current_client_name)
+            skip_client = current_client in internal_client_ids
             continue
 
         if skip_client:
@@ -223,6 +238,8 @@ def _parse_client_ports_and_links(aconnect_output):
         if current_client and current_port and '\t' in line and "Connecting To:" in stripped:
             source_id = f"{current_client}:{current_port}"
             for dest_client, dest_port in re.findall(r"(\d+):(\d+)", stripped):
+                if dest_client in internal_client_ids:
+                    continue
                 links.append((source_id, f"{dest_client}:{dest_port}"))
 
     return id_to_name, links
