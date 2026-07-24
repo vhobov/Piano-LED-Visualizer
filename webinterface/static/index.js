@@ -687,6 +687,27 @@ function escape_html(str) {
     return div.innerHTML;
 }
 
+function format_port_display_name(fullName) {
+    // ALSA port names are typically "Device Name:Device Name MIDI 1 24:0" -
+    // the device name is duplicated and ends with a volatile client:port ID.
+    // For display only, drop the ID and collapse the duplication down to
+    // "Device Name MIDI 1". The stored/applied port name is untouched.
+    if (!fullName || fullName === 'default') return fullName;
+
+    let name = fullName.replace(/\s+\d+:\d+$/, '');
+
+    const colonIndex = name.indexOf(':');
+    if (colonIndex > -1) {
+        const before = name.slice(0, colonIndex);
+        const after = name.slice(colonIndex + 1);
+        if (after.startsWith(before)) {
+            name = after;
+        }
+    }
+
+    return name;
+}
+
 function render_port_setups() {
     const list = document.getElementById('port-setups-list');
     if (!list) return;
@@ -712,11 +733,12 @@ function render_port_setups() {
 
         const info = document.createElement('div');
         info.className = 'flex-1 min-w-[200px]';
+        const portsTitle = `${setup.input_port} / ${setup.secondary_input_port} / ${setup.play_port}`;
         info.innerHTML = `
             ${activeBadge}<span class="font-semibold text-sm">${escape_html(setup.name)}</span>
             <span class="text-xs text-gray-500 dark:text-gray-400 ml-2">#${setup.priority}</span>
-            <div class="text-xs text-gray-600 dark:text-gray-400 mt-1">
-                ${escape_html(setup.input_port)} / ${escape_html(setup.secondary_input_port)} / ${escape_html(setup.play_port)}
+            <div class="text-xs text-gray-600 dark:text-gray-400 mt-1" title="${escape_html(portsTitle)}">
+                ${escape_html(format_port_display_name(setup.input_port))} / ${escape_html(format_port_display_name(setup.secondary_input_port))} / ${escape_html(format_port_display_name(setup.play_port))}
                 ${setup.auto_connect ? ' &middot; 🔗' : ''}
             </div>
         `;
