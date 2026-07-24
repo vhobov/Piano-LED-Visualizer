@@ -787,6 +787,7 @@ function render_port_setups() {
             <div class="text-xs text-gray-600 dark:text-gray-400 mt-1" title="${escape_html(portsTitle)}">
                 ${escape_html(format_port_display_name(setup.input_port))} / ${escape_html(format_port_display_name(setup.secondary_input_port))} / ${escape_html(format_port_display_name(setup.play_port))}
                 ${setup.auto_connect ? ' &middot; 🔗' : ''}
+                ${setup.extra_connections && setup.extra_connections.length ? ` &middot; +${setup.extra_connections.length} ${translate('extra_connections_badge')}` : ''}
             </div>
         `;
 

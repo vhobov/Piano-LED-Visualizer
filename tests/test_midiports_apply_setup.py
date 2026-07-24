@@ -44,9 +44,10 @@ class TestMidiPortsApplySetup(unittest.TestCase):
             patch.object(midiports_module.mido, 'get_input_names', return_value=[]),
             patch.object(midiports_module.mido, 'get_output_names', return_value=[]),
             patch.object(connectall_module, 'connectall'),
+            patch.object(connectall_module, 'apply_custom_connections'),
         ]
         (self.mock_open_input, self.mock_open_output,
-         _, _, self.mock_connectall) = [p.start() for p in self.patchers]
+         _, _, self.mock_connectall, self.mock_apply_custom_connections) = [p.start() for p in self.patchers]
         self.mock_open_input.return_value = MagicMock()
         self.mock_open_output.return_value = MagicMock()
 
@@ -94,6 +95,18 @@ class TestMidiPortsApplySetup(unittest.TestCase):
         self.midiports.apply_setup(setup)
 
         self.mock_connectall.assert_not_called()
+        self.mock_apply_custom_connections.assert_not_called()
+
+    def test_apply_setup_restores_extra_connections_when_auto_connect_true(self):
+        extra = [{"source_client": "Lenovo Tab P11", "source_port": "Lenovo Tab P11 MIDI 1",
+                  "dest_client": "Roland Digital Piano", "dest_port": "Roland Digital Piano MIDI 1"}]
+        setup = {"id": 7, "name": "Synthesia", "input_port": "Lenovo",
+                 "secondary_input_port": "Roland", "play_port": "Lenovo", "auto_connect": True,
+                 "extra_connections": extra}
+
+        self.midiports.apply_setup(setup)
+
+        self.mock_apply_custom_connections.assert_called_once_with(extra)
 
     def test_apply_setup_shows_error_level_message_on_failure(self):
         setup = {"id": 4, "name": "Synthesia", "input_port": "Roland",

@@ -1,4 +1,5 @@
 import contextlib
+import json
 import sqlite3
 import threading
 import os
@@ -29,7 +30,12 @@ class PortSetupManager:
     Schema:
         port_setups(id INTEGER PK, priority INTEGER UNIQUE, name TEXT,
                     input_port TEXT, secondary_input_port TEXT, play_port TEXT,
-                    auto_connect INTEGER)
+                    auto_connect INTEGER, extra_connections TEXT)
+
+    extra_connections is a JSON-encoded list of {source_client, source_port,
+    dest_client, dest_port} dicts - arbitrary manual ALSA connections (drawn on
+    the Ports page's raw connection matrix) captured at save time, restored
+    alongside the input/secondary/playback ports when the setup is applied.
     """
 
     def __init__(self, db_path: str = "port_setups.db"):
@@ -78,10 +84,18 @@ class PortSetupManager:
                 )
                 """
             )
+            cur.execute("PRAGMA table_info(port_setups)")
+            existing_cols = {row[1] for row in cur.fetchall()}
+            if "extra_connections" not in existing_cols:
+                cur.execute("ALTER TABLE port_setups ADD COLUMN extra_connections TEXT NOT NULL DEFAULT '[]'")
             conn.commit()
 
     @staticmethod
     def _row_to_dict(row) -> Dict:
+        try:
+            extra_connections = json.loads(row[7]) if row[7] else []
+        except (ValueError, TypeError):
+            extra_connections = []
         return {
             "id": row[0],
             "priority": row[1],
@@ -90,14 +104,15 @@ class PortSetupManager:
             "secondary_input_port": row[4],
             "play_port": row[5],
             "auto_connect": bool(row[6]),
+            "extra_connections": extra_connections,
         }
 
     def list_setups(self) -> List[Dict]:
         with self._lock, self._connect() as conn:
             cur = conn.cursor()
             cur.execute(
-                "SELECT id, priority, name, input_port, secondary_input_port, play_port, auto_connect "
-                "FROM port_setups ORDER BY priority ASC"
+                "SELECT id, priority, name, input_port, secondary_input_port, play_port, auto_connect, "
+                "extra_connections FROM port_setups ORDER BY priority ASC"
             )
             rows = cur.fetchall()
         return [self._row_to_dict(r) for r in rows]
@@ -106,8 +121,8 @@ class PortSetupManager:
         with self._lock, self._connect() as conn:
             cur = conn.cursor()
             cur.execute(
-                "SELECT id, priority, name, input_port, secondary_input_port, play_port, auto_connect "
-                "FROM port_setups WHERE id=?",
+                "SELECT id, priority, name, input_port, secondary_input_port, play_port, auto_connect, "
+                "extra_connections FROM port_setups WHERE id=?",
                 (setup_id,)
             )
             row = cur.fetchone()
@@ -128,10 +143,11 @@ class PortSetupManager:
 
     def create_setup(self, name: str, priority, input_port: str,
                       secondary_input_port: str = "default", play_port: str = None,
-                      auto_connect: bool = False) -> Dict:
+                      auto_connect: bool = False, extra_connections: Optional[List[Dict]] = None) -> Dict:
         priority = self._validate(name, priority, input_port, play_port)
         name = str(name).strip()
         secondary_input_port = secondary_input_port or "default"
+        extra_connections_json = json.dumps(extra_connections or [])
 
         with self._lock, self._connect() as conn:
             cur = conn.cursor()
@@ -139,9 +155,10 @@ class PortSetupManager:
             if cur.fetchone() is not None:
                 raise ValueError(f"Priority {priority} is already used by another setup")
             cur.execute(
-                "INSERT INTO port_setups(priority, name, input_port, secondary_input_port, play_port, auto_connect) "
-                "VALUES(?,?,?,?,?,?)",
-                (priority, name, input_port, secondary_input_port, play_port, int(bool(auto_connect)))
+                "INSERT INTO port_setups(priority, name, input_port, secondary_input_port, play_port, "
+                "auto_connect, extra_connections) VALUES(?,?,?,?,?,?,?)",
+                (priority, name, input_port, secondary_input_port, play_port, int(bool(auto_connect)),
+                 extra_connections_json)
             )
             conn.commit()
             setup_id = cur.lastrowid
@@ -150,10 +167,11 @@ class PortSetupManager:
 
     def update_setup(self, setup_id: int, name: str, priority, input_port: str,
                       secondary_input_port: str = "default", play_port: str = None,
-                      auto_connect: bool = False) -> Dict:
+                      auto_connect: bool = False, extra_connections: Optional[List[Dict]] = None) -> Dict:
         priority = self._validate(name, priority, input_port, play_port)
         name = str(name).strip()
         secondary_input_port = secondary_input_port or "default"
+        extra_connections_json = json.dumps(extra_connections or [])
 
         with self._lock, self._connect() as conn:
             cur = conn.cursor()
@@ -165,8 +183,9 @@ class PortSetupManager:
                 raise ValueError(f"Priority {priority} is already used by another setup")
             cur.execute(
                 "UPDATE port_setups SET priority=?, name=?, input_port=?, secondary_input_port=?, "
-                "play_port=?, auto_connect=? WHERE id=?",
-                (priority, name, input_port, secondary_input_port, play_port, int(bool(auto_connect)), setup_id)
+                "play_port=?, auto_connect=?, extra_connections=? WHERE id=?",
+                (priority, name, input_port, secondary_input_port, play_port, int(bool(auto_connect)),
+                 extra_connections_json, setup_id)
             )
             conn.commit()
 

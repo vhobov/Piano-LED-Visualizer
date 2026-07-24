@@ -75,6 +75,52 @@ class TestPortSetupManager(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.psm.create_setup("Setup", 1, "Roland", "default", "", False)
 
+    def test_07_extra_connections_defaults_to_empty_list(self):
+        created = self.psm.create_setup("Setup A", 1, "Roland", "default", "Roland", False)
+        self.assertEqual(created["extra_connections"], [])
+
+    def test_08_extra_connections_roundtrip_on_create_and_update(self):
+        conns = [{"source_client": "Lenovo Tab P11", "source_port": "Lenovo Tab P11 MIDI 1",
+                  "dest_client": "Roland Digital Piano", "dest_port": "Roland Digital Piano MIDI 1"}]
+        created = self.psm.create_setup("Setup A", 1, "Roland", "default", "Roland", False,
+                                         extra_connections=conns)
+        self.assertEqual(created["extra_connections"], conns)
+        self.assertEqual(self.psm.get_setup(created["id"])["extra_connections"], conns)
+
+        updated = self.psm.update_setup(created["id"], "Setup A", 1, "Roland", "default", "Roland", False,
+                                         extra_connections=[])
+        self.assertEqual(updated["extra_connections"], [])
+
+    def test_09_migration_adds_extra_connections_column_to_existing_db(self):
+        # Simulate a pre-existing DB created before extra_connections existed.
+        import sqlite3
+        conn = sqlite3.connect(self.db_path)
+        conn.execute("DROP TABLE port_setups")
+        conn.execute(
+            """
+            CREATE TABLE port_setups (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                priority INTEGER NOT NULL UNIQUE,
+                name TEXT NOT NULL,
+                input_port TEXT NOT NULL,
+                secondary_input_port TEXT NOT NULL DEFAULT 'default',
+                play_port TEXT NOT NULL,
+                auto_connect INTEGER NOT NULL DEFAULT 0
+            )
+            """
+        )
+        conn.execute(
+            "INSERT INTO port_setups(priority, name, input_port, secondary_input_port, play_port, auto_connect) "
+            "VALUES(1, 'Legacy', 'Roland', 'default', 'Roland', 0)"
+        )
+        conn.commit()
+        conn.close()
+
+        migrated = PortSetupManager(db_path=self.db_path)
+        setups = migrated.list_setups()
+        self.assertEqual(len(setups), 1)
+        self.assertEqual(setups[0]["extra_connections"], [])
+
 
 class TestGetNextSetup(unittest.TestCase):
     def setUp(self):

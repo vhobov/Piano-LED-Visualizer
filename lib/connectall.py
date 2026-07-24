@@ -2,6 +2,7 @@
 import subprocess
 import sys
 import os
+import re
 from xml.etree import ElementTree as ET
 
 
@@ -176,6 +177,114 @@ def _check_connection_exists(aconnect_output, input_port_id, secondary_input_por
     except Exception as e:
         print(f"ERROR: Failed to check connection existence: {e}")
         return False
+
+
+def _parse_client_ports_and_links(aconnect_output):
+    """Parse `aconnect -l` output into (id_to_name, links).
+    id_to_name maps 'client:port' -> (client_name, port_name). links is a list
+    of (source_id, destination_id) 'client:port' tuples for every live
+    'Connecting To:' edge."""
+    id_to_name = {}
+    links = []
+    current_client = current_client_name = current_port = None
+
+    for line in aconnect_output.splitlines():
+        stripped = line.strip()
+
+        client_match = re.match(r"client (\d+):\s+'([^']+)'", stripped)
+        if client_match:
+            current_client, current_client_name = client_match.group(1), client_match.group(2)
+            current_port = None
+            continue
+
+        if current_client and line.startswith('    ') and not line.startswith('\t'):
+            port_match = re.match(r"(\d+)\s+'([^']+)'", stripped)
+            if port_match:
+                current_port = port_match.group(1)
+                id_to_name[f"{current_client}:{current_port}"] = (current_client_name, port_match.group(2))
+                continue
+
+        if current_client and current_port and '\t' in line and "Connecting To:" in stripped:
+            source_id = f"{current_client}:{current_port}"
+            for dest_client, dest_port in re.findall(r"(\d+):(\d+)", stripped):
+                links.append((source_id, f"{dest_client}:{dest_port}"))
+
+    return id_to_name, links
+
+
+def capture_custom_connections(exclude_pairs=()):
+    """Snapshot every currently-live ALSA MIDI connection as a list of
+    {source_client, source_port, dest_client, dest_port} dicts, keyed by
+    descriptive device/port name rather than 'client:port' ID - those IDs get
+    reshuffled on every reboot or USB replug, but the names stay stable.
+    exclude_pairs is an iterable of (source_id, dest_id) 'client:port' tuples
+    to leave out (e.g. the input/secondary bridge connectall() already
+    re-establishes on its own, so a saved Setup doesn't store it twice)."""
+    try:
+        output = subprocess.check_output(["aconnect", "-l"], text=True)
+    except Exception:
+        return []
+
+    id_to_name, links = _parse_client_ports_and_links(output)
+    exclude = {tuple(p) for p in exclude_pairs}
+
+    connections = []
+    seen = set()
+    for source_id, dest_id in links:
+        if (source_id, dest_id) in exclude or (dest_id, source_id) in exclude:
+            continue
+        if source_id not in id_to_name or dest_id not in id_to_name or source_id == dest_id:
+            continue
+        if (source_id, dest_id) in seen:
+            continue
+        seen.add((source_id, dest_id))
+        source_client, source_port = id_to_name[source_id]
+        dest_client, dest_port = id_to_name[dest_id]
+        connections.append({
+            "source_client": source_client, "source_port": source_port,
+            "dest_client": dest_client, "dest_port": dest_port,
+        })
+    return connections
+
+
+def _resolve_id(id_to_name, client_name, port_name):
+    """Find the current 'client:port' ID whose descriptive name matches a
+    captured connection's endpoint."""
+    for cp_id, (c_name, p_name) in id_to_name.items():
+        if c_name == client_name and p_name == port_name:
+            return cp_id
+    for cp_id, (c_name, p_name) in id_to_name.items():
+        if c_name == client_name:
+            return cp_id
+    return None
+
+
+def apply_custom_connections(connections):
+    """Re-create previously captured custom ALSA connections (see
+    capture_custom_connections) by re-resolving each endpoint's descriptive
+    name against the currently live port list. Best-effort per connection: a
+    device that isn't plugged in right now is skipped, not fatal."""
+    if not connections:
+        return
+
+    try:
+        output = subprocess.check_output(["aconnect", "-l"], text=True)
+    except Exception as e:
+        print(f"ERROR: Could not list ALSA ports to restore custom connections: {e}")
+        return
+
+    id_to_name, _ = _parse_client_ports_and_links(output)
+
+    for conn in connections:
+        source_id = _resolve_id(id_to_name, conn.get("source_client"), conn.get("source_port"))
+        dest_id = _resolve_id(id_to_name, conn.get("dest_client"), conn.get("dest_port"))
+        if not source_id or not dest_id:
+            print(f"WARNING: Skipping custom connection, device not found: "
+                  f"{conn.get('source_client')} -> {conn.get('dest_client')}")
+            continue
+        result = subprocess.run(["aconnect", source_id, dest_id], capture_output=True, text=True)
+        if result.returncode != 0 and "already subscribed" not in result.stderr:
+            print(f"WARNING: Failed to restore custom connection {source_id} -> {dest_id}: {result.stderr.strip()}")
 
 
 if __name__ == '__main__':

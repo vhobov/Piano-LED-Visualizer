@@ -387,6 +387,7 @@ const translations = {
         delete: "Delete",
         save: "Save",
         active_setup_badge: "ACTIVE",
+        extra_connections_badge: "custom connections",
         port_setup_save_failed: "Failed to save setup",
         port_setup_apply_failed: "Failed to apply setup",
         input_port_setup: "Input Port Setup",

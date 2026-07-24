@@ -308,10 +308,12 @@ class MidiPorts:
 
     def apply_setup(self, setup):
         """Apply a saved port setup dict ({id, name, input_port,
-        secondary_input_port, play_port, auto_connect}): opens the input/playback
-        ports, records the secondary input, optionally re-links input+secondary
-        two-way over ALSA, and remembers this as the active setup so button
-        cycling and restarts pick up where they left off. Returns True/False."""
+        secondary_input_port, play_port, auto_connect, extra_connections}):
+        opens the input/playback ports, records the secondary input, optionally
+        re-links input+secondary two-way over ALSA plus any manually-drawn
+        extra_connections from the raw connection matrix, and remembers this as
+        the active setup so button cycling and restarts pick up where they left
+        off. Returns True/False."""
         name = setup.get("name") or "Setup"
         try:
             _refresh_port_cache()
@@ -332,6 +334,7 @@ class MidiPorts:
 
             if setup.get("auto_connect"):
                 connectall.connectall(self.usersettings)
+                connectall.apply_custom_connections(setup.get("extra_connections") or [])
 
             if setup.get("id") is not None:
                 self.usersettings.change_setting_value("active_port_setup_id", setup["id"])
