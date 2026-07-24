@@ -2132,17 +2132,25 @@ def get_ports():
     return jsonify(response)
 
 
-@webinterface.route('/api/switch_ports', methods=['GET'])
-def switch_ports():
-    active_input = app_state.usersettings.get_setting_value("input_port")
-    secondary_input = app_state.usersettings.get_setting_value("secondary_input_port")
-    app_state.midiports.change_port("inport", secondary_input)
-    app_state.usersettings.change_setting_value("secondary_input_port", active_input)
-    app_state.usersettings.change_setting_value("input_port", secondary_input)
+@webinterface.route('/api/next_port_setup', methods=['GET'])
+def next_port_setup():
+    """Cycle to the next saved port setup in ascending priority order, mirroring
+    the physical KEY3 button. Falls back to the legacy Active/Secondary swap
+    when no setups are saved yet."""
+    applied = None
+    if hasattr(app_state, 'port_setup_manager'):
+        applied = app_state.midiports.cycle_port_setup(app_state.port_setup_manager)
+
+    if applied is None:
+        active_input = app_state.usersettings.get_setting_value("input_port")
+        secondary_input = app_state.usersettings.get_setting_value("secondary_input_port")
+        app_state.midiports.change_port("inport", secondary_input)
+        app_state.usersettings.change_setting_value("secondary_input_port", active_input)
+        app_state.usersettings.change_setting_value("input_port", secondary_input)
 
     fastColorWipe(app_state.ledstrip.strip, True, app_state.ledsettings)
 
-    return jsonify(success=True)
+    return jsonify(success=True, applied_setup=applied)
 
 
 @webinterface.route('/api/get_sequences', methods=['GET'])

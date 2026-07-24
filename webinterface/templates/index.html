@@ -441,7 +441,7 @@
                     </svg>
                 </span>
                     <span :class="{'lg:hidden': !isSidebarOpen}" data-translate="switch_ports">
-                        Switch Ports
+                        Next Setup
                     </span>
                 </button>
             </div>
@@ -725,7 +725,7 @@
         if (document.getElementById('switch_ports') != null) {
             document.getElementById('switch_ports').disabled = true;
         }
-        switch_ports()
+        next_port_setup()
     }
 
     let touchstartX = 0;

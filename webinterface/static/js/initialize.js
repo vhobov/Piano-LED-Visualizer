@@ -523,7 +523,7 @@ function initialize_ports_settings() {
     document.getElementById('switch_ports').onclick = function () {
         document.getElementById('switch_ports').disabled = true;
         document.getElementById('switch_ports_sidebar').disabled = true;
-        switch_ports()
+        next_port_setup()
     }
     document.getElementById('active_input').onchange = function () {
         change_setting("input_port", this.value)

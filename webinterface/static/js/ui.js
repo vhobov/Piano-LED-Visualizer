@@ -252,18 +252,21 @@ function populate_colormaps(select_ids) {
     }
 }
 
-function switch_ports() {
+function next_port_setup() {
     const xhttp = new XMLHttpRequest();
     xhttp.onreadystatechange = function () {
         if (this.readyState === 4 && this.status === 200) {
             get_ports()
+            if (typeof load_port_setups === 'function') {
+                load_port_setups();
+            }
             if (document.getElementById('switch_ports') != null) {
                 document.getElementById('switch_ports').disabled = false;
             }
             document.getElementById('switch_ports_sidebar').disabled = false;
         }
     };
-    xhttp.open("GET", "/api/switch_ports", true);
+    xhttp.open("GET", "/api/next_port_setup", true);
     xhttp.send();
 }
 

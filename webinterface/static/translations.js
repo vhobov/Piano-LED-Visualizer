@@ -73,7 +73,7 @@ const translations = {
         led_animations: "LED Animations",
         wifi: "Wi-Fi",
         practice: "Practice",
-        switch_ports: "Switch Ports",
+        switch_ports: "Next Setup",
         view_on_github: "View on GitHub",
         join_discord: "Join Discord server",
         
@@ -264,7 +264,7 @@ const translations = {
         for_lighting_leds: "For lighting LEDs with your keyboard, set your piano port as an active input.",
         set_your_synthesia: "Set your Synthesia's port for learning mode.",
         active: "Active",
-        switch: "Switch",
+        switch: "Next Setup",
         secondary: "Secondary",
         used_for_sound: "Used for sound when playing a midi file.",
         list_of_ports: "List of ports and connections",
